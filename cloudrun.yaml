@@ -1,0 +1,22 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: dragun
+spec:
+  template:
+    spec:
+      containers:
+        - image: gcr.io/PROJECT_ID/dragun
+          ports:
+            - containerPort: 8080
+          env:
+            - name: GOOGLE_CLOUD_PROJECT
+              value: PROJECT_ID
+            - name: FIRESTORE_DATABASE
+              value: "(default)"
+            - name: ADK_MODEL
+              value: gemini-flash-latest
+            - name: GOOGLE_GENAI_USE_VERTEXAI
+              value: "TRUE"
+            - name: GOOGLE_CLOUD_LOCATION
+              value: us-central1

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dragun</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #140f0b;
+        color: #f8ead7;
+      }
+      .shell { max-width: 1080px; margin: 0 auto; padding: 32px; }
+      .hero, .panel {
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 221, 167, 0.18);
+        border-radius: 20px;
+        padding: 24px;
+        margin-bottom: 20px;
+      }
+      .eyebrow { color: #ffb347; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+      h1 { font-size: clamp(2rem, 6vw, 4.5rem); line-height: 0.95; margin: 0 0 16px; }
+      h2 { margin-top: 0; }
+      .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+      label { display: grid; gap: 6px; margin-bottom: 12px; color: #f5d8ad; }
+      input, select, button {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 221, 167, 0.25);
+        padding: 12px;
+        font: inherit;
+      }
+      input, select { background: #211812; color: #f8ead7; }
+      button { background: #ff9f1c; color: #170e05; font-weight: 800; cursor: pointer; }
+      .messages {
+        min-height: 220px;
+        display: grid;
+        align-content: start;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .message { padding: 12px 14px; border-radius: 14px; max-width: 78%; white-space: pre-wrap; }
+      .user { margin-left: auto; background: #53351a; }
+      .dragun { background: #261c14; border: 1px solid rgba(255, 221, 167, 0.14); }
+      .chat { display: flex; gap: 12px; }
+      .chat input { flex: 1; }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Dragun Phase 1</p>
+        <h1>Your dragon knows the hoard.</h1>
+        <p>
+          Register with a handle, set budgets or caps, then log purchases in
+          plain text. Dragun tracks inventory and shows budget truth before you
+          buy.
+        </p>
+      </section>
+
+      <section class="panel grid">
+        <form id="register-form">
+          <h2>Register</h2>
+          <label>Handle <input name="handle" required placeholder="ember" /></label>
+          <label>Passkey <input name="passkey" required type="password" /></label>
+          <label>Zip code <input name="zip_code" required pattern="[0-9]{5}" placeholder="11201" /></label>
+          <button type="submit">Create / load user</button>
+        </form>
+
+        <form id="budget-form">
+          <h2>Budget</h2>
+          <label>Scope <input name="scope" required placeholder="clothing or all" /></label>
+          <label>Amount <input name="amount" required type="number" min="0" step="0.01" /></label>
+          <label>Period
+            <select name="period_type">
+              <option value="monthly">monthly</option>
+              <option value="weekly">weekly</option>
+            </select>
+          </label>
+          <button type="submit">Set budget</button>
+        </form>
+
+        <form id="constraint-form">
+          <h2>Inventory cap</h2>
+          <label>Item or tag <input name="scope" required placeholder="shirts" /></label>
+          <label>Max count <input name="threshold" required type="number" min="1" step="1" /></label>
+          <button type="submit">Set cap</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Talk to Dragun</h2>
+        <div id="messages" class="messages"></div>
+        <form id="chat-form" class="chat">
+          <input name="message" required placeholder="3 shirts, 2 dresses, 1 pant - 50 bucks" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+
+    <script>
+      let currentUser = localStorage.getItem("dragun_user_id") || "";
+
+      const messages = document.querySelector("#messages");
+      const addMessage = (who, text) => {
+        const div = document.createElement("div");
+        div.className = `message ${who}`;
+        div.textContent = text;
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+      };
+
+      const api = async (path, options = {}) => {
+        const response = await fetch(path, {
+          headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+          ...options,
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail || "The dragon coughed smoke.");
+        return body;
+      };
+
+      document.querySelector("#register-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const payload = Object.fromEntries(form.entries());
+        try {
+          let user;
+          try {
+            user = await api("/api/register", { method: "POST", body: JSON.stringify(payload) });
+          } catch (error) {
+            user = await api(`/api/users/${encodeURIComponent(payload.handle)}`);
+          }
+          currentUser = user.user_id;
+          localStorage.setItem("dragun_user_id", currentUser);
+          addMessage("dragun", `Hoard opened for ${user.handle}.`);
+        } catch (error) {
+          addMessage("dragun", error.message);
+        }
+      });
+
+      document.querySelector("#budget-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentUser) return addMessage("dragun", "Register first. No anonymous hoards.");
+        const form = new FormData(event.target);
+        const scope = form.get("scope").toString().toLowerCase();
+        const payload = {
+          budget_scope: scope,
+          scope_tags: scope === "all" ? [] : [scope],
+          budget_amount: Number(form.get("amount")),
+          period_type: form.get("period_type"),
+        };
+        const result = await api(`/api/users/${currentUser}/budgets`, { method: "POST", body: JSON.stringify(payload) });
+        addMessage("dragun", `${result.budget.budget_scope} budget set. $${result.status.amount_remaining.toFixed(2)} remains.`);
+      });
+
+      document.querySelector("#constraint-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentUser) return addMessage("dragun", "Register first. I need a hoard to guard.");
+        const form = new FormData(event.target);
+        const item = form.get("scope").toString().toLowerCase().replace(/s$/, "");
+        const payload = {
+          constraint_type: "inventory_cap",
+          item_normalized: item,
+          operator: "count_exceeds",
+          threshold_value: Number(form.get("threshold")),
+        };
+        await api(`/api/users/${currentUser}/constraints`, { method: "POST", body: JSON.stringify(payload) });
+        addMessage("dragun", `Guard set. ${item} cap is ${payload.threshold_value}.`);
+      });
+
+      document.querySelector("#chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentUser) return addMessage("dragun", "Register first. Then feed the dragon.");
+        const input = event.target.elements.message;
+        const message = input.value.trim();
+        input.value = "";
+        addMessage("user", message);
+        try {
+          const response = await api("/api/chat", {
+            method: "POST",
+            body: JSON.stringify({ user_id: currentUser, message }),
+          });
+          addMessage("dragun", response.reply);
+        } catch (error) {
+          addMessage("dragun", error.message);
+        }
+      });
+    </script>
+  </body>
+</html>
