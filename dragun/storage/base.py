@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from datetime import date
+from typing import Iterable
+
+from dragun.models import Budget, Constraint, Event, Tag, User
+
+
+class DragunRepository(ABC):
+    """Storage boundary for Dragun's event-sourced data model."""
+
+    @abstractmethod
+    def create_user(self, user: User) -> User:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_user_by_handle(self, handle: str) -> User | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_user(self, user_id: str) -> User | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_event(self, event: Event, tag_names: Iterable[str]) -> Event:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_events(
+        self,
+        user_id: str,
+        *,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> list[Event]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def upsert_tag(self, tag_name: str, tag_origin: str = "agent_inferred") -> Tag:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_tags(self) -> list[Tag]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_event_tags(self, event_ids: Iterable[str]) -> dict[str, list[str]]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_budget(self, budget: Budget) -> Budget:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_active_budgets(self, user_id: str) -> list[Budget]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_constraint(self, constraint: Constraint) -> Constraint:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_active_constraints(self, user_id: str) -> list[Constraint]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_user_data(self, user_id: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def export_user_data(self, user_id: str) -> dict:
+        raise NotImplementedError
