@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+google-adk
+google-genai
+google-cloud-firestore
+pydantic

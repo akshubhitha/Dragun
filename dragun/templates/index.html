@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dragun</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Dragun</h1>
+        <p class="subtitle">Guard your hoard. Track items, not merchants.</p>
+      </header>
+
+      <section class="panel">
+        <h2>1) Register</h2>
+        <form id="register-form">
+          <label>Handle <input name="handle" required minlength="3" /></label>
+          <label>Passkey <input name="passkey" type="password" required minlength="4" /></label>
+          <label>ZIP <input name="zip_code" pattern="\d{5}" required /></label>
+          <button type="submit">Register</button>
+        </form>
+        <div id="register-result" class="result"></div>
+      </section>
+
+      <section class="panel">
+        <h2>2) Set Budget (optional)</h2>
+        <form id="budget-form">
+          <label>Handle <input name="handle" required /></label>
+          <label>Passkey <input name="passkey" type="password" required /></label>
+          <label>Scope <input name="budget_scope" value="all" /></label>
+          <label>Amount <input name="budget_amount" type="number" step="0.01" required /></label>
+          <label>Period
+            <select name="period_type">
+              <option value="monthly">monthly</option>
+              <option value="weekly">weekly</option>
+              <option value="custom">custom</option>
+            </select>
+          </label>
+          <label>Scope tags (comma-separated) <input name="scope_tags" placeholder="clothing,food" /></label>
+          <button type="submit">Create budget</button>
+        </form>
+        <div id="budget-result" class="result"></div>
+      </section>
+
+      <section class="panel">
+        <h2>3) Chat</h2>
+        <form id="chat-form">
+          <label>Handle <input name="handle" required /></label>
+          <label>Passkey <input name="passkey" type="password" required /></label>
+          <label>Message
+            <textarea
+              name="message"
+              required
+              rows="4"
+              placeholder="3 shirts, 2 dresses, 1 pant - 50 bucks"
+            ></textarea>
+          </label>
+          <input name="session_id" type="hidden" />
+          <button type="submit">Send</button>
+        </form>
+        <div id="chat-result" class="result"></div>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
