@@ -217,10 +217,34 @@ class PurchaseEvaluation(BaseModel):
     patterns: list[str] = Field(default_factory=list)
 
 
+class UserPublic(BaseModel):
+    """Safe user representation — passkey_hash is never included."""
+    user_id: str
+    handle: str
+    zip_code: str
+    currency: str
+    created_at: datetime
+
+    @classmethod
+    def from_user(cls, user: "User") -> "UserPublic":
+        return cls(
+            user_id=user.user_id,
+            handle=user.handle,
+            zip_code=user.zip_code,
+            currency=user.currency,
+            created_at=user.created_at,
+        )
+
+
 class RegisterRequest(BaseModel):
     handle: str
     passkey: str = Field(min_length=8)
     zip_code: str
+
+
+class LoginRequest(BaseModel):
+    handle: str
+    passkey: str
 
 
 class ChatRequest(BaseModel):

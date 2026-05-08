@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,10 +22,12 @@ from dragun.models import (
     ConstraintCreateRequest,
     ConstraintOperator,
     ConstraintType,
+    LoginRequest,
     PeriodType,
     PurchaseEvaluation,
     RegisterRequest,
     User,
+    UserPublic,
 )
 from dragun.services.budget import BudgetService
 from dragun.services.inventory import InventoryService
@@ -75,8 +80,8 @@ def health() -> dict[str, str]:
     return {"status": "ok", "model": settings.gemini_model, "agent": agent_name}
 
 
-@app.post("/api/register", response_model=User)
-def register_user(request: RegisterRequest, repo: DragunRepository = Depends(get_repo)) -> User:
+@app.post("/api/register", response_model=UserPublic)
+def register_user(request: RegisterRequest, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
     existing = repo.get_user_by_handle(request.handle)
     if existing:
         raise HTTPException(status_code=409, detail="That handle is already guarding a hoard.")
@@ -90,15 +95,27 @@ def register_user(request: RegisterRequest, repo: DragunRepository = Depends(get
         created_at=datetime.now(UTC),
     )
     repo.create_user(user)
-    return user
+    return UserPublic.from_user(user)
 
 
-@app.get("/api/users/{handle}", response_model=User)
-def get_user(handle: str, repo: DragunRepository = Depends(get_repo)) -> User:
+@app.post("/api/login", response_model=UserPublic)
+def login_user(request: LoginRequest, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
+    user = repo.get_user_by_handle(request.handle)
+    # Use constant-time comparison to prevent timing attacks
+    if not user or not hmac.compare_digest(
+        user.passkey_hash,
+        hash_passkey(request.passkey),
+    ):
+        raise HTTPException(status_code=401, detail="Wrong handle or passkey. The dragon is suspicious.")
+    return UserPublic.from_user(user)
+
+
+@app.get("/api/users/{handle}", response_model=UserPublic)
+def get_user(handle: str, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
     user = repo.get_user_by_handle(handle)
     if not user:
         raise HTTPException(status_code=404, detail="No hoard found for that handle.")
-    return user
+    return UserPublic.from_user(user)
 
 
 @app.post("/api/users/{user_id}/budgets")
@@ -202,9 +219,6 @@ def require_user(repo: DragunRepository, user_id: str) -> User:
 
 
 def hash_passkey(passkey: str) -> str:
-    import hashlib
-    import os
-
     salt = os.environ.get("DRAGUN_PASSKEY_SALT", "local-dev-salt")
     return hashlib.sha256(f"{salt}:{passkey}".encode("utf-8")).hexdigest()
 

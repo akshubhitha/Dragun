@@ -413,9 +413,10 @@ document.getElementById("signin-btn").addEventListener("click", async () => {
   if (!handle || !passkey) { $err.textContent = "Enter handle and passkey."; return; }
   $err.textContent = "";
   try {
-    let user;
-    try { user = await api("/api/register",{method:"POST",body:JSON.stringify({handle,passkey,zip_code:"00000"})}); }
-    catch { user = await api(`/api/users/${encodeURIComponent(handle)}`); }
+    const user = await api("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ handle, passkey }),
+    });
     loginSuccess(user);
   } catch(e) { $err.textContent = e.message; }
 });
