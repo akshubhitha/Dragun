@@ -87,6 +87,9 @@ class FirestoreRepository(DragunRepository):
         self.client.collection("tags").document(tag.tag_id).set(tag.model_dump(mode="python"))
         return tag
 
+    def list_tags(self) -> list[Tag]:
+        return [Tag(**doc.to_dict()) for doc in self.client.collection("tags").stream()]
+
     def list_event_tags(self, event_ids: Iterable[str]) -> dict[str, list[str]]:
         ids = list(event_ids)
         if not ids:

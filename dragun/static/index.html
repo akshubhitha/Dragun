@@ -1,191 +1,620 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dragun</title>
-    <style>
-      body {
-        margin: 0;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #140f0b;
-        color: #f8ead7;
-      }
-      .shell { max-width: 1080px; margin: 0 auto; padding: 32px; }
-      .hero, .panel {
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 221, 167, 0.18);
-        border-radius: 20px;
-        padding: 24px;
-        margin-bottom: 20px;
-      }
-      .eyebrow { color: #ffb347; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-      h1 { font-size: clamp(2rem, 6vw, 4.5rem); line-height: 0.95; margin: 0 0 16px; }
-      h2 { margin-top: 0; }
-      .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-      label { display: grid; gap: 6px; margin-bottom: 12px; color: #f5d8ad; }
-      input, select, button {
-        border-radius: 12px;
-        border: 1px solid rgba(255, 221, 167, 0.25);
-        padding: 12px;
-        font: inherit;
-      }
-      input, select { background: #211812; color: #f8ead7; }
-      button { background: #ff9f1c; color: #170e05; font-weight: 800; cursor: pointer; }
-      .messages {
-        min-height: 220px;
-        display: grid;
-        align-content: start;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      .message { padding: 12px 14px; border-radius: 14px; max-width: 78%; white-space: pre-wrap; }
-      .user { margin-left: auto; background: #53351a; }
-      .dragun { background: #261c14; border: 1px solid rgba(255, 221, 167, 0.14); }
-      .chat { display: flex; gap: 12px; }
-      .chat input { flex: 1; }
-    </style>
-  </head>
-  <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Dragun Phase 1</p>
-        <h1>Your dragon knows the hoard.</h1>
-        <p>
-          Register with a handle, set budgets or caps, then log purchases in
-          plain text. Dragun tracks inventory and shows budget truth before you
-          buy.
-        </p>
-      </section>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Dragun — Consumption Intelligence</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --sidebar-bg:   #0f1923;
+      --sidebar-w:    220px;
+      --accent:       #00c9a7;
+      --accent-dim:   #00a387;
+      --panel:        #ffffff;
+      --bg:           #f0f2f5;
+      --border:       #dde1e7;
+      --text:         #1a2332;
+      --muted:        #6b7a8d;
+      --green:        #0eb37a;
+      --red:          #e84040;
+      --amber:        #f59e0b;
+      --row-even:     #f8f9fb;
+      --xls-head:     #e8eaed;
+      --xls-border:   #c6cbd1;
+      --radius:       10px;
+      --shadow:       0 1px 4px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    }
+    html, body { height: 100%; font-family: "Inter", ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
 
-      <section class="panel grid">
-        <form id="register-form">
-          <h2>Register</h2>
-          <label>Handle <input name="handle" required placeholder="ember" /></label>
-          <label>Passkey <input name="passkey" required type="password" /></label>
-          <label>Zip code <input name="zip_code" required pattern="[0-9]{5}" placeholder="11201" /></label>
-          <button type="submit">Create / load user</button>
-        </form>
+    /* ── Login ─────────────────────────────────────────────── */
+    #login-screen {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #0f1923 0%, #1a3050 60%, #0f2b3d 100%);
+    }
+    .login-card { background:#fff; border-radius:16px; padding:48px 44px 40px; width:400px; box-shadow:0 24px 64px rgba(0,0,0,.3); }
+    .login-logo { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .login-logo-text { font-size:22px; font-weight:800; letter-spacing:-.5px; color:var(--text); }
+    .login-logo-text span { color:var(--accent); }
+    .login-tagline { color:var(--muted); font-size:13px; margin-bottom:32px; }
+    .tab-row { display:flex; border-bottom:2px solid var(--border); margin-bottom:28px; }
+    .tab-btn { flex:1; padding:10px 0; background:none; border:none; cursor:pointer; font:600 13px/1 inherit; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-2px; transition:color .15s,border-color .15s; }
+    .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+    .form-group { margin-bottom:16px; }
+    .form-group label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em; }
+    .form-group input { width:100%; padding:11px 14px; border:1.5px solid var(--border); border-radius:8px; font:inherit; font-size:14px; color:var(--text); background:#fafbfc; transition:border-color .15s,box-shadow .15s; outline:none; }
+    .form-group input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,201,167,.12); background:#fff; }
+    .form-group input::placeholder { color:#b0b8c4; }
+    .btn-primary { width:100%; padding:13px; background:var(--accent); border:none; border-radius:8px; font:700 15px/1 inherit; color:#fff; cursor:pointer; transition:background .15s,transform .08s; }
+    .btn-primary:hover { background:var(--accent-dim); }
+    .btn-primary:active { transform:scale(.98); }
+    .login-error { color:var(--red); font-size:12px; margin-top:12px; text-align:center; min-height:16px; }
 
-        <form id="budget-form">
-          <h2>Budget</h2>
-          <label>Scope <input name="scope" required placeholder="clothing or all" /></label>
-          <label>Amount <input name="amount" required type="number" min="0" step="0.01" /></label>
-          <label>Period
-            <select name="period_type">
-              <option value="monthly">monthly</option>
-              <option value="weekly">weekly</option>
-            </select>
-          </label>
-          <button type="submit">Set budget</button>
-        </form>
+    /* ── App Shell ─────────────────────────────────────────── */
+    #app { display:none; height:100vh; flex-direction:row; }
+    #app.visible { display:flex; }
 
-        <form id="constraint-form">
-          <h2>Inventory cap</h2>
-          <label>Item or tag <input name="scope" required placeholder="shirts" /></label>
-          <label>Max count <input name="threshold" required type="number" min="1" step="1" /></label>
-          <button type="submit">Set cap</button>
-        </form>
-      </section>
+    .sidebar { width:var(--sidebar-w); background:var(--sidebar-bg); color:#e2e8f0; display:flex; flex-direction:column; flex-shrink:0; border-right:1px solid rgba(255,255,255,.06); }
+    .sidebar-header { padding:22px 20px 18px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .sidebar-logo { font-size:18px; font-weight:800; color:#fff; letter-spacing:-.4px; }
+    .sidebar-logo span { color:var(--accent); }
+    .sidebar-user { font-size:12px; color:#7a8fa6; margin-top:4px; }
+    .nav { flex:1; padding:12px 0; }
+    .nav-item { display:flex; align-items:center; gap:10px; padding:10px 20px; cursor:pointer; color:#8fa3b8; font-size:13px; font-weight:500; transition:background .12s,color .12s; user-select:none; }
+    .nav-item:hover { background:rgba(255,255,255,.05); color:#e2e8f0; }
+    .nav-item.active { background:rgba(0,201,167,.12); color:var(--accent); font-weight:600; }
+    .nav-item svg { width:16px; height:16px; flex-shrink:0; }
+    .nav-section-label { padding:16px 20px 6px; font-size:10px; font-weight:700; color:#4a5568; letter-spacing:.08em; text-transform:uppercase; }
+    .sidebar-footer { padding:16px 20px; border-top:1px solid rgba(255,255,255,.08); }
+    .logout-btn { background:none; border:none; color:#7a8fa6; font:12px/1 inherit; cursor:pointer; display:flex; align-items:center; gap:6px; padding:0; }
+    .logout-btn:hover { color:var(--red); }
 
-      <section class="panel">
-        <h2>Talk to Dragun</h2>
-        <div id="messages" class="messages"></div>
-        <form id="chat-form" class="chat">
-          <input name="message" required placeholder="3 shirts, 2 dresses, 1 pant - 50 bucks" />
-          <button type="submit">Send</button>
-        </form>
-      </section>
-    </main>
+    .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    .topbar { background:#fff; border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 28px; height:56px; gap:16px; flex-shrink:0; }
+    .topbar-title { font-size:15px; font-weight:700; color:var(--text); flex:1; }
+    .topbar-chip { display:flex; align-items:center; gap:6px; background:#f0fdf9; border:1px solid #a7f3e0; border-radius:20px; padding:5px 12px; font-size:12px; font-weight:600; color:var(--green); }
+    .topbar-chip .dot { width:7px; height:7px; border-radius:50%; background:var(--green); }
 
-    <script>
-      let currentUser = localStorage.getItem("dragun_user_id") || "";
+    .content { flex:1; overflow-y:auto; padding:24px 28px; }
+    .page { display:none; }
+    .page.active { display:block; }
 
-      const messages = document.querySelector("#messages");
-      const addMessage = (who, text) => {
-        const div = document.createElement("div");
-        div.className = `message ${who}`;
-        div.textContent = text;
-        messages.appendChild(div);
-        messages.scrollTop = messages.scrollHeight;
-      };
+    /* ── Summary Cards ─────────────────────────────────────── */
+    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow); }
+    .card-label { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+    .card-value { font-size:26px; font-weight:800; color:var(--text); letter-spacing:-.5px; font-variant-numeric:tabular-nums; }
+    .card-value.green { color:var(--green); }
+    .card-sub { font-size:11px; color:var(--muted); margin-top:4px; }
 
-      const api = async (path, options = {}) => {
-        const response = await fetch(path, {
-          headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-          ...options,
-        });
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.detail || "The dragon coughed smoke.");
-        return body;
-      };
+    /* ── Section Panel ─────────────────────────────────────── */
+    .section { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:20px; overflow:hidden; }
+    .section-head { display:flex; align-items:center; padding:14px 20px; border-bottom:1px solid var(--border); background:#fafbfc; }
+    .section-title { font-size:13px; font-weight:700; color:var(--text); flex:1; }
+    .section-action { font-size:12px; font-weight:600; color:var(--accent); background:none; border:none; cursor:pointer; padding:4px 10px; border-radius:6px; transition:background .12s; }
+    .section-action:hover { background:rgba(0,201,167,.08); }
 
-      document.querySelector("#register-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const form = new FormData(event.target);
-        const payload = Object.fromEntries(form.entries());
-        try {
-          let user;
-          try {
-            user = await api("/api/register", { method: "POST", body: JSON.stringify(payload) });
-          } catch (error) {
-            user = await api(`/api/users/${encodeURIComponent(payload.handle)}`);
-          }
-          currentUser = user.user_id;
-          localStorage.setItem("dragun_user_id", currentUser);
-          addMessage("dragun", `Hoard opened for ${user.handle}.`);
-        } catch (error) {
-          addMessage("dragun", error.message);
-        }
-      });
+    /* ── Spreadsheet Table ─────────────────────────────────── */
+    .xls-wrap { overflow-x:auto; }
+    table.xls { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+    table.xls thead th { background:var(--xls-head); border-right:1px solid var(--xls-border); border-bottom:2px solid var(--xls-border); padding:8px 12px; text-align:left; font-size:11px; font-weight:700; color:#4a5568; text-transform:uppercase; letter-spacing:.05em; position:sticky; top:0; user-select:none; white-space:nowrap; }
+    table.xls thead th:first-child { background:#dde1e7; color:#8fa3b8; width:40px; text-align:center; }
+    table.xls tbody tr:hover { background:#edf6ff !important; }
+    table.xls tbody td { padding:7px 12px; border-right:1px solid #eaecef; border-bottom:1px solid #eaecef; color:var(--text); white-space:nowrap; }
+    table.xls tbody td:first-child { background:var(--xls-head); color:var(--muted); text-align:center; font-size:11px; border-right:2px solid var(--xls-border); }
+    table.xls tbody tr:nth-child(even) td { background:var(--row-even); }
+    table.xls tbody tr:nth-child(even) td:first-child { background:var(--xls-head); }
+    table.xls tbody tr:hover td:first-child { background:#dde1e7 !important; }
+    .tag-pill { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; background:#e8f5ff; color:#2b6cb0; border:1px solid #bee3f8; margin-right:3px; }
+    .qty-num { font-weight:700; }
+    .cost-num { color:var(--muted); }
+    .no-data { padding:40px; text-align:center; color:var(--muted); font-size:13px; }
+    .cell-green { color:var(--green); font-weight:600; }
+    .cell-red { color:var(--red); font-weight:600; }
+    .cell-amber { color:var(--amber); font-weight:600; }
 
-      document.querySelector("#budget-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!currentUser) return addMessage("dragun", "Register first. No anonymous hoards.");
-        const form = new FormData(event.target);
-        const scope = form.get("scope").toString().toLowerCase();
-        const payload = {
-          budget_scope: scope,
-          scope_tags: scope === "all" ? [] : [scope],
-          budget_amount: Number(form.get("amount")),
-          period_type: form.get("period_type"),
-        };
-        const result = await api(`/api/users/${currentUser}/budgets`, { method: "POST", body: JSON.stringify(payload) });
-        addMessage("dragun", `${result.budget.budget_scope} budget set. $${result.status.amount_remaining.toFixed(2)} remains.`);
-      });
+    /* ── Budget Progress ───────────────────────────────────── */
+    .budget-list { padding:0 20px 16px; }
+    .budget-row { padding:14px 0; border-bottom:1px solid var(--border); }
+    .budget-row:last-child { border-bottom:none; }
+    .budget-row-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px; }
+    .budget-scope { font-weight:700; font-size:13px; text-transform:capitalize; }
+    .budget-nums { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+    .budget-nums strong { color:var(--text); }
+    .progress-track { height:8px; background:#e9ecef; border-radius:4px; overflow:hidden; }
+    .progress-fill { height:100%; border-radius:4px; transition:width .4s; }
+    .progress-fill.ok { background:var(--green); }
+    .progress-fill.warn { background:var(--amber); }
+    .progress-fill.over { background:var(--red); }
+    .budget-meta { display:flex; justify-content:space-between; margin-top:5px; font-size:11px; color:var(--muted); }
 
-      document.querySelector("#constraint-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!currentUser) return addMessage("dragun", "Register first. I need a hoard to guard.");
-        const form = new FormData(event.target);
-        const item = form.get("scope").toString().toLowerCase().replace(/s$/, "");
-        const payload = {
-          constraint_type: "inventory_cap",
-          item_normalized: item,
-          operator: "count_exceeds",
-          threshold_value: Number(form.get("threshold")),
-        };
-        await api(`/api/users/${currentUser}/constraints`, { method: "POST", body: JSON.stringify(payload) });
-        addMessage("dragun", `Guard set. ${item} cap is ${payload.threshold_value}.`);
-      });
+    /* ── Chat ──────────────────────────────────────────────── */
+    .chat-messages { overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:12px; min-height:140px; max-height:320px; }
+    .msg { display:flex; flex-direction:column; max-width:80%; }
+    .msg.user { align-self:flex-end; align-items:flex-end; }
+    .msg.dragun { align-self:flex-start; }
+    .msg-label { font-size:10px; font-weight:700; color:var(--muted); margin-bottom:3px; text-transform:uppercase; letter-spacing:.05em; }
+    .msg-bubble { padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; white-space:pre-wrap; }
+    .msg.user .msg-bubble { background:#0f1923; color:#e2e8f0; border-radius:12px 12px 0 12px; }
+    .msg.dragun .msg-bubble { background:#f0fdf9; border:1px solid #a7f3e0; color:var(--text); border-radius:12px 12px 12px 0; }
+    .chat-formula-bar { display:flex; align-items:center; border-top:2px solid var(--border); background:#fafbfc; }
+    .formula-prefix { padding:0 14px; font-size:12px; font-weight:700; color:var(--muted); border-right:1px solid var(--border); background:var(--xls-head); height:48px; display:flex; align-items:center; white-space:nowrap; font-family:"SF Mono","Consolas",monospace; }
+    .chat-input { flex:1; border:none; outline:none; padding:0 16px; height:48px; font:13px/1 "SF Mono","Consolas",monospace; color:var(--text); background:transparent; }
+    .chat-input::placeholder { color:#b0b8c4; font-family:inherit; }
+    .chat-send { height:48px; padding:0 20px; background:var(--accent); border:none; font:700 13px/1 inherit; color:#fff; cursor:pointer; transition:background .12s; white-space:nowrap; }
+    .chat-send:hover { background:var(--accent-dim); }
 
-      document.querySelector("#chat-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!currentUser) return addMessage("dragun", "Register first. Then feed the dragon.");
-        const input = event.target.elements.message;
-        const message = input.value.trim();
-        input.value = "";
-        addMessage("user", message);
-        try {
-          const response = await api("/api/chat", {
-            method: "POST",
-            body: JSON.stringify({ user_id: currentUser, message }),
-          });
-          addMessage("dragun", response.reply);
-        } catch (error) {
-          addMessage("dragun", error.message);
-        }
-      });
-    </script>
-  </body>
+    /* ── Forms ─────────────────────────────────────────────── */
+    .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; padding:16px 20px; }
+    .fg { display:flex; flex-direction:column; gap:5px; }
+    .fg label { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+    .fg input, .fg select { padding:8px 10px; border:1.5px solid var(--border); border-radius:6px; font:13px/1 inherit; color:var(--text); background:#fff; outline:none; transition:border-color .12s; }
+    .fg input:focus, .fg select:focus { border-color:var(--accent); }
+    .form-actions { padding:0 20px 16px; }
+    .btn-sm { padding:8px 18px; background:var(--accent); border:none; border-radius:6px; font:600 13px/1 inherit; color:#fff; cursor:pointer; transition:background .12s; }
+    .btn-sm:hover { background:var(--accent-dim); }
+    .btn-ghost { padding:8px 18px; background:none; border:1.5px solid var(--border); border-radius:6px; font:600 13px/1 inherit; color:var(--muted); cursor:pointer; margin-left:8px; transition:border-color .12s,color .12s; }
+    .btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
+
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .hidden { display:none !important; }
+
+    /* Full-height chat page */
+    #page-chat .section { display:flex; flex-direction:column; height:calc(100vh - 140px); }
+    #page-chat .chat-messages { flex:1; max-height:none; min-height:0; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════ LOGIN ══════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+        <circle cx="18" cy="18" r="18" fill="#0f1923"/>
+        <path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="18" cy="28" r="2" fill="#00c9a7"/>
+        <path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/>
+      </svg>
+      <div class="login-logo-text">dra<span>gun</span></div>
+    </div>
+    <p class="login-tagline">Your dragon knows every coin in the hoard.</p>
+
+    <div class="tab-row">
+      <button class="tab-btn active" data-tab="signin">Sign In</button>
+      <button class="tab-btn" data-tab="register">Create Account</button>
+    </div>
+
+    <div id="tab-signin">
+      <div class="form-group"><label>Handle</label><input id="si-handle" placeholder="ember" autocomplete="username"/></div>
+      <div class="form-group"><label>Passkey</label><input id="si-passkey" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
+      <button class="btn-primary" id="signin-btn">Sign In →</button>
+    </div>
+
+    <div id="tab-register" class="hidden">
+      <div class="form-group"><label>Handle</label><input id="reg-handle" placeholder="ember" autocomplete="username"/></div>
+      <div class="form-group"><label>Passkey</label><input id="reg-passkey" type="password" placeholder="Create a passkey" autocomplete="new-password"/></div>
+      <div class="form-group"><label>Zip Code</label><input id="reg-zip" placeholder="10001" maxlength="5"/></div>
+      <button class="btn-primary" id="register-btn">Create Account →</button>
+    </div>
+
+    <div id="login-error" class="login-error"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════ APP ════════════════════════ -->
+<div id="app">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">dra<span>gun</span></div>
+      <div class="sidebar-user" id="sidebar-handle">—</div>
+    </div>
+    <div class="nav">
+      <div class="nav-section-label">Workspace</div>
+      <div class="nav-item active" data-page="overview">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2zm7 0h5v5H9zM2 9h5v5H2zm7 0h5v5H9z"/></svg>
+        Overview
+      </div>
+      <div class="nav-item" data-page="inventory">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5zm1.5-.5a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5zM4 6h8v1H4zm0 2.5h8v1H4zm0 2.5h5v1H4z"/></svg>
+        Inventory
+      </div>
+      <div class="nav-item" data-page="budgets">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1a6 6 0 1 1 0 12A6 6 0 0 1 8 2zm.5 4.5V5h-1v1.5H6v1h1.5V9H6v1h1.5v1.5h1V10H10V9H8.5V7.5H10v-1z"/></svg>
+        Budgets
+      </div>
+      <div class="nav-item" data-page="chat">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2.678 11.894a1 1 0 0 1 .287.801 10.97 10.97 0 0 1-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 0 1 .71-.074A8.06 8.06 0 0 0 8 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 0 1-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 0 0 .244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 0 1-2.347-.306c-.52.263-1.639.742-3.468 1.105z"/></svg>
+        Ask Dragun
+      </div>
+      <div class="nav-section-label" style="margin-top:8px;">Settings</div>
+      <div class="nav-item" data-page="guards">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.338 1.59a61.44 61.44 0 0 0-2.837.856.481.481 0 0 0-.328.39c-.554 4.157.726 7.19 2.253 9.188a10.725 10.725 0 0 0 2.287 2.233c.346.244.652.42.893.533.12.057.218.095.293.118a.55.55 0 0 0 .101.025.615.615 0 0 0 .1-.025c.076-.023.174-.061.294-.118.24-.113.547-.29.893-.533a10.726 10.726 0 0 0 2.287-2.233c1.527-1.997 2.807-5.031 2.253-9.188a.48.48 0 0 0-.328-.39c-.651-.213-1.75-.56-2.837-.855C9.552 1.29 8.531 1.067 8 1.067c-.53 0-1.552.223-2.662.524z"/></svg>
+        Guards &amp; Caps
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="logout-btn" id="logout-btn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/><path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/></svg>
+        Sign out
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">Overview</div>
+      <div class="topbar-chip"><div class="dot"></div> In-memory · local dev</div>
+    </div>
+    <div class="content">
+
+      <!-- OVERVIEW -->
+      <div class="page active" id="page-overview">
+        <div class="cards">
+          <div class="card"><div class="card-label">Items Tracked</div><div class="card-value" id="ov-total-items">0</div><div class="card-sub">unique line items</div></div>
+          <div class="card"><div class="card-label">Budget Remaining</div><div class="card-value green" id="ov-budget-remaining">$0.00</div><div class="card-sub">across all budgets</div></div>
+          <div class="card"><div class="card-label">Active Budgets</div><div class="card-value" id="ov-active-budgets">0</div><div class="card-sub">categories guarded</div></div>
+          <div class="card"><div class="card-label">Guards Set</div><div class="card-value" id="ov-active-guards">0</div><div class="card-sub">inventory caps</div></div>
+        </div>
+        <div class="two-col">
+          <div class="section">
+            <div class="section-head">
+              <div class="section-title">📦 Inventory Snapshot</div>
+              <button class="section-action" data-page="inventory">View All →</button>
+            </div>
+            <div class="xls-wrap">
+              <table class="xls"><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Tags</th></tr></thead>
+              <tbody id="ov-inv-body"><tr><td colspan="4" class="no-data">Log a purchase to populate the hoard.</td></tr></tbody></table>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-head">
+              <div class="section-title">💰 Budget Status</div>
+              <button class="section-action" data-page="budgets">Manage →</button>
+            </div>
+            <div class="budget-list" id="ov-budget-list"><div class="no-data" style="padding:28px 0;">No budgets set yet.</div></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div class="section-title">⚡ Quick Log</div></div>
+          <div class="chat-messages" id="ov-messages" style="min-height:100px;max-height:180px;"></div>
+          <div class="chat-formula-bar">
+            <span class="formula-prefix">fx</span>
+            <input class="chat-input" id="ov-chat-input" placeholder='"3 shirts, 2 dresses — 50 bucks"  ·  "budget 200 for clothing this month"'/>
+            <button class="chat-send" id="ov-chat-send">⏎ Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- INVENTORY -->
+      <div class="page" id="page-inventory">
+        <div class="section">
+          <div class="section-head">
+            <div class="section-title">📦 Inventory Ledger</div>
+            <button class="section-action" id="inv-refresh-btn">↻ Refresh</button>
+          </div>
+          <div class="xls-wrap">
+            <table class="xls" id="inv-table">
+              <thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Avg Unit Cost</th><th>Lifespan</th><th>Tags</th><th>Last Purchased</th></tr></thead>
+              <tbody id="inv-body"><tr><td colspan="7" class="no-data">No inventory yet. Log a purchase in Ask Dragun.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div class="section-title">➕ Log Items</div></div>
+          <div class="form-grid">
+            <div class="fg" style="grid-column:1/-1">
+              <label>Natural Language Entry</label>
+              <input id="inv-entry" placeholder='"3 shirts, 1 jacket — 80 bucks"  or  "I have 12 shirts"'/>
+            </div>
+          </div>
+          <div class="form-actions"><button class="btn-sm" id="inv-log-btn">Log to Hoard</button></div>
+        </div>
+      </div>
+
+      <!-- BUDGETS -->
+      <div class="page" id="page-budgets">
+        <div class="section">
+          <div class="section-head"><div class="section-title">💰 Budget Tracker</div></div>
+          <div class="budget-list" id="budgets-list"><div class="no-data" style="padding:32px 0;">No budgets set. Create one below.</div></div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div class="section-title">Budget Ledger</div></div>
+          <div class="xls-wrap">
+            <table class="xls">
+              <thead><tr><th>#</th><th>Scope</th><th>Budgeted</th><th>Spent</th><th>Remaining</th><th>$/Day Pace</th><th>Days Left</th><th>Period</th></tr></thead>
+              <tbody id="budgets-tbody"><tr><td colspan="8" class="no-data">No budgets yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div class="section-title">＋ New Budget</div></div>
+          <div class="form-grid">
+            <div class="fg"><label>Category / Scope</label><input id="b-scope" placeholder="clothing, dining, all…"/></div>
+            <div class="fg"><label>Amount ($)</label><input id="b-amount" type="number" min="0" step="0.01" placeholder="500"/></div>
+            <div class="fg"><label>Period</label><select id="b-period"><option value="monthly">Monthly</option><option value="weekly">Weekly</option></select></div>
+          </div>
+          <div class="form-actions"><button class="btn-sm" id="b-create-btn">Set Budget</button></div>
+        </div>
+      </div>
+
+      <!-- CHAT -->
+      <div class="page" id="page-chat">
+        <div class="section">
+          <div class="section-head"><div class="section-title">🐉 Ask Dragun — Formula Bar</div></div>
+          <div class="chat-messages" id="chat-messages" style="min-height:400px;max-height:calc(100vh - 260px);"></div>
+          <div class="chat-formula-bar">
+            <span class="formula-prefix">fx</span>
+            <input class="chat-input" id="chat-input" placeholder='"3 shirts, 2 dresses — 50 bucks"  ·  "budget 200 for clothing"  ·  "how many shirts do I have?"'/>
+            <button class="chat-send" id="chat-send">⏎ Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- GUARDS -->
+      <div class="page" id="page-guards">
+        <div class="section">
+          <div class="section-head"><div class="section-title">🛡 Active Guards &amp; Caps</div></div>
+          <div class="xls-wrap">
+            <table class="xls">
+              <thead><tr><th>#</th><th>Type</th><th>Scope / Item</th><th>Operator</th><th>Threshold</th></tr></thead>
+              <tbody id="guards-tbody"><tr><td colspan="5" class="no-data">No guards set.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div class="section-title">＋ New Inventory Cap</div></div>
+          <div class="form-grid">
+            <div class="fg"><label>Item</label><input id="g-item" placeholder="shirts, shoes…"/></div>
+            <div class="fg"><label>Max Count</label><input id="g-threshold" type="number" min="1" step="1" placeholder="15"/></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-sm" id="g-create-btn">Set Cap</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════ STATE ════ */
+const state = { userId: "", handle: "" };
+
+/* ════ API ════ */
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers:{"Content-Type":"application/json",...(opts.headers||{})}, ...opts });
+  const b = await r.json();
+  if (!r.ok) throw new Error(b.detail || "The dragon coughed smoke.");
+  return b;
+}
+
+/* ════ LOGIN ════ */
+const $login = document.getElementById("login-screen");
+const $app   = document.getElementById("app");
+const $err   = document.getElementById("login-error");
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-signin").classList.toggle("hidden", btn.dataset.tab !== "signin");
+    document.getElementById("tab-register").classList.toggle("hidden", btn.dataset.tab !== "register");
+    $err.textContent = "";
+  });
+});
+
+document.getElementById("signin-btn").addEventListener("click", async () => {
+  const handle = document.getElementById("si-handle").value.trim();
+  const passkey = document.getElementById("si-passkey").value;
+  if (!handle || !passkey) { $err.textContent = "Enter handle and passkey."; return; }
+  $err.textContent = "";
+  try {
+    let user;
+    try { user = await api("/api/register",{method:"POST",body:JSON.stringify({handle,passkey,zip_code:"00000"})}); }
+    catch { user = await api(`/api/users/${encodeURIComponent(handle)}`); }
+    loginSuccess(user);
+  } catch(e) { $err.textContent = e.message; }
+});
+
+document.getElementById("register-btn").addEventListener("click", async () => {
+  const handle = document.getElementById("reg-handle").value.trim();
+  const passkey = document.getElementById("reg-passkey").value;
+  const zip = document.getElementById("reg-zip").value.trim();
+  if (!handle||!passkey||!zip) { $err.textContent = "Fill in all fields."; return; }
+  if (!/^\d{5}$/.test(zip)) { $err.textContent = "Zip must be 5 digits."; return; }
+  $err.textContent = "";
+  try {
+    const user = await api("/api/register",{method:"POST",body:JSON.stringify({handle,passkey,zip_code:zip})});
+    loginSuccess(user);
+  } catch(e) { $err.textContent = e.message; }
+});
+
+["si-handle","si-passkey"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if(e.key==="Enter") document.getElementById("signin-btn").click(); }));
+["reg-handle","reg-passkey","reg-zip"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if(e.key==="Enter") document.getElementById("register-btn").click(); }));
+
+function loginSuccess(user) {
+  state.userId = user.user_id; state.handle = user.handle;
+  $login.style.display = "none"; $app.classList.add("visible");
+  document.getElementById("sidebar-handle").textContent = "@" + user.handle;
+  addMsg("dragun","Hoard opened for @"+user.handle+". What enters the lair?","ov-messages");
+  addMsg("dragun","Hoard opened for @"+user.handle+". What enters the lair?","chat-messages");
+  refreshAll();
+}
+
+document.getElementById("logout-btn").addEventListener("click", () => { location.reload(); });
+
+/* ════ NAV ════ */
+const pageTitles = {overview:"Overview",inventory:"Inventory Ledger",budgets:"Budget Tracker",chat:"Ask Dragun",guards:"Guards & Caps"};
+document.querySelectorAll("[data-page]").forEach(el => {
+  el.addEventListener("click", () => navigate(el.dataset.page));
+});
+function navigate(page) {
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.page===page));
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("active", p.id==="page-"+page));
+  document.getElementById("page-title").textContent = pageTitles[page]||page;
+  if(page==="inventory") renderInventory();
+  if(page==="budgets")   renderBudgets();
+}
+
+/* ════ DATA ════ */
+let cachedInv = [], cachedBudgets = [];
+
+async function refreshAll() {
+  await Promise.all([refreshInventory(), refreshBudgets()]);
+}
+
+async function refreshInventory() {
+  if(!state.userId) return;
+  try {
+    const d = await api(`/api/users/${state.userId}/inventory`);
+    cachedInv = d.inventory || [];
+    document.getElementById("ov-total-items").textContent = cachedInv.length;
+    renderOverviewInv(); renderInventory();
+  } catch{}
+}
+
+async function refreshBudgets() {
+  if(!state.userId) return;
+  try {
+    const d = await api(`/api/users/${state.userId}/budgets/status`);
+    cachedBudgets = d.budgets || [];
+    const total = cachedBudgets.reduce((s,b)=>s+(b.amount_remaining||0),0);
+    document.getElementById("ov-budget-remaining").textContent = "$"+total.toFixed(2);
+    document.getElementById("ov-active-budgets").textContent = cachedBudgets.length;
+    renderOverviewBudgets(); renderBudgets();
+  } catch{}
+}
+
+/* ════ RENDER ════ */
+function renderOverviewInv() {
+  const tb = document.getElementById("ov-inv-body");
+  if(!cachedInv.length){tb.innerHTML='<tr><td colspan="4" class="no-data">Log a purchase to populate the hoard.</td></tr>';return;}
+  tb.innerHTML = cachedInv.slice(0,8).map((r,i)=>`<tr><td>${i+1}</td><td><strong>${x(r.item_normalized)}</strong></td><td class="qty-num">${r.current_quantity}</td><td>${(r.tags||[]).map(t=>`<span class="tag-pill">${x(t)}</span>`).join("")||"—"}</td></tr>`).join("");
+}
+
+function renderInventory() {
+  const tb = document.getElementById("inv-body");
+  if(!cachedInv.length){tb.innerHTML='<tr><td colspan="7" class="no-data">No inventory yet.</td></tr>';return;}
+  tb.innerHTML = cachedInv.map((r,i)=>`<tr>
+    <td>${i+1}</td><td><strong>${x(r.item_normalized)}</strong></td>
+    <td class="qty-num">${r.current_quantity}</td>
+    <td class="cost-num">${r.avg_unit_cost!=null?"$"+Number(r.avg_unit_cost).toFixed(2):"—"}</td>
+    <td>${x(r.lifespan_type||"—")}</td>
+    <td>${(r.tags||[]).map(t=>`<span class="tag-pill">${x(t)}</span>`).join("")||"—"}</td>
+    <td class="cost-num">${r.last_purchased?new Date(r.last_purchased).toLocaleDateString():"—"}</td>
+  </tr>`).join("");
+}
+
+function renderOverviewBudgets() {
+  const el = document.getElementById("ov-budget-list");
+  if(!cachedBudgets.length){el.innerHTML='<div class="no-data" style="padding:28px 0;">No budgets set yet.</div>';return;}
+  el.innerHTML = cachedBudgets.map(budgetBarHtml).join("");
+}
+
+function renderBudgets() {
+  const el = document.getElementById("budgets-list");
+  const tb = document.getElementById("budgets-tbody");
+  if(!cachedBudgets.length){
+    el.innerHTML='<div class="no-data" style="padding:32px 0;">No budgets set.</div>';
+    tb.innerHTML='<tr><td colspan="8" class="no-data">No budgets yet.</td></tr>';
+    return;
+  }
+  el.innerHTML = cachedBudgets.map(budgetBarHtml).join("");
+  tb.innerHTML = cachedBudgets.map((b,i)=>{
+    const pct=b.pct_consumed||0;
+    const cls = pct>1?"cell-red":pct>.75?"cell-amber":"cell-green";
+    return `<tr><td>${i+1}</td><td><strong>${x(b.budget_scope)}</strong></td>
+      <td>$${(b.budget_amount||0).toFixed(2)}</td>
+      <td>$${(b.amount_spent||0).toFixed(2)}</td>
+      <td class="${cls}">$${(b.amount_remaining||0).toFixed(2)}</td>
+      <td class="cost-num">$${(b.daily_pace||0).toFixed(2)}/day</td>
+      <td>${b.days_remaining??"—"}</td>
+      <td>${x(b.period_type||"—")}</td></tr>`;
+  }).join("");
+}
+
+function budgetBarHtml(b) {
+  const pct = Math.min(b.pct_consumed||0,1);
+  const cls = pct>.9?"over":pct>.7?"warn":"ok";
+  return `<div class="budget-row">
+    <div class="budget-row-head"><span class="budget-scope">${x(b.budget_scope)}</span>
+    <span class="budget-nums"><strong>$${(b.amount_remaining||0).toFixed(2)}</strong> of $${(b.budget_amount||0).toFixed(2)} left</span></div>
+    <div class="progress-track"><div class="progress-fill ${cls}" style="width:${(pct*100).toFixed(1)}%"></div></div>
+    <div class="budget-meta"><span>${(pct*100).toFixed(0)}% used</span><span>${b.days_remaining??"—"} days · $${(b.daily_pace||0).toFixed(2)}/day</span></div>
+  </div>`;
+}
+
+/* ════ CHAT ════ */
+function addMsg(who, text, cid) {
+  const c = document.getElementById(cid); if(!c) return;
+  const d = document.createElement("div"); d.className="msg "+who;
+  d.innerHTML=`<div class="msg-label">${who==="user"?"You":"🐉 Dragun"}</div><div class="msg-bubble">${x(text)}</div>`;
+  c.appendChild(d); c.scrollTop=c.scrollHeight;
+}
+
+async function sendChat(msg, cid) {
+  if(!state.userId||!msg) return;
+  addMsg("user",msg,cid);
+  try {
+    const r = await api("/api/chat",{method:"POST",body:JSON.stringify({user_id:state.userId,message:msg})});
+    addMsg("dragun",r.reply,cid);
+    await refreshAll();
+  } catch(e){ addMsg("dragun",e.message,cid); }
+}
+
+function bindChat(inputId, btnId, cid) {
+  const inp = document.getElementById(inputId);
+  document.getElementById(btnId).addEventListener("click",()=>{ const m=inp.value.trim(); if(!m)return; inp.value=""; sendChat(m,cid); });
+  inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ const m=inp.value.trim(); if(!m)return; inp.value=""; sendChat(m,cid); } });
+}
+bindChat("ov-chat-input","ov-chat-send","ov-messages");
+bindChat("chat-input","chat-send","chat-messages");
+
+/* ════ INV LOG ════ */
+document.getElementById("inv-log-btn").addEventListener("click",()=>{
+  const v=document.getElementById("inv-entry").value.trim(); if(!v)return;
+  document.getElementById("inv-entry").value="";
+  sendChat(v,"ov-messages").then(()=>renderInventory());
+});
+
+/* ════ BUDGET FORM ════ */
+document.getElementById("b-create-btn").addEventListener("click",async()=>{
+  const scope=document.getElementById("b-scope").value.trim().toLowerCase();
+  const amount=parseFloat(document.getElementById("b-amount").value);
+  const period=document.getElementById("b-period").value;
+  if(!scope||isNaN(amount))return;
+  try {
+    await api(`/api/users/${state.userId}/budgets`,{method:"POST",body:JSON.stringify({budget_scope:scope,scope_tags:scope==="all"?[]:[scope],budget_amount:amount,period_type:period})});
+    document.getElementById("b-scope").value=""; document.getElementById("b-amount").value="";
+    await refreshBudgets();
+  } catch(e){alert(e.message);}
+});
+
+/* ════ GUARDS FORM ════ */
+let guardsCount=0;
+document.getElementById("g-create-btn").addEventListener("click",async()=>{
+  const item=document.getElementById("g-item").value.trim().toLowerCase().replace(/s$/,"");
+  const thr=parseFloat(document.getElementById("g-threshold").value);
+  if(!item||isNaN(thr))return;
+  try {
+    await api(`/api/users/${state.userId}/constraints`,{method:"POST",body:JSON.stringify({constraint_type:"inventory_cap",item_normalized:item,operator:"count_exceeds",threshold_value:thr,scope_tags:[]})});
+    document.getElementById("g-item").value=""; document.getElementById("g-threshold").value="";
+    guardsCount++;
+    document.getElementById("ov-active-guards").textContent=guardsCount;
+    const tb=document.getElementById("guards-tbody");
+    if(guardsCount===1) tb.innerHTML="";
+    tb.innerHTML+=`<tr><td>${guardsCount}</td><td><span class="tag-pill">inventory_cap</span></td><td><strong>${x(item)}</strong></td><td>count_exceeds</td><td class="qty-num">${thr}</td></tr>`;
+  } catch(e){alert(e.message);}
+});
+
+document.getElementById("inv-refresh-btn").addEventListener("click",refreshInventory);
+
+/* ════ UTIL ════ */
+function x(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+</script>
+</body>
 </html>

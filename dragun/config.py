@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     app_name: str = "Dragun"
     environment: str = Field(default="local", validation_alias="DRAGUN_ENV")
     google_cloud_project: str | None = Field(default=None, validation_alias="GOOGLE_CLOUD_PROJECT")
+    use_firestore: bool = Field(default=False, validation_alias="DRAGUN_USE_FIRESTORE")
     firestore_database: str = Field(default="(default)", validation_alias="FIRESTORE_DATABASE")
     firestore_emulator_host: str | None = Field(default=None, validation_alias="FIRESTORE_EMULATOR_HOST")
     adk_model: str = Field(default="gemini-flash-latest", validation_alias="ADK_MODEL")

@@ -35,7 +35,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 
 def create_repository(settings: Settings) -> DragunRepository:
-    if settings.firestore_emulator_host or settings.google_cloud_project:
+    if settings.use_firestore and (settings.firestore_emulator_host or settings.google_cloud_project):
         return FirestoreRepository(settings.google_cloud_project, settings.firestore_database)
     return InMemoryDragunRepository()
 
