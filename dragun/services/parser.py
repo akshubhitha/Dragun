@@ -322,4 +322,51 @@ def _parsed_input_from_payload(raw_input: str, payload: dict[str, Any]) -> Parse
 
 
 def parse_text_input(raw_input: str) -> ParsedInput:
+    """Synchronous fallback-only parser. Use parse_text_input_async for Gemini."""
     return parse_text_fallback(raw_input)
+
+
+async def parse_text_input_async(raw_input: str) -> ParsedInput:
+    """Use Gemini Flash if GOOGLE_API_KEY is set, otherwise fall back to deterministic parser."""
+    parser = InputParserService(use_gemini=True)
+    return await parser.parse(raw_input)
+
+
+async def generate_dragon_reply(
+    user_message: str,
+    inventory_summary: str,
+    budget_summary: str,
+    constraint_alerts: str,
+    velocity_notes: str,
+) -> str | None:
+    """Ask Gemini Flash to generate the dragon's reply. Returns None if unavailable."""
+    settings = get_settings()
+    if not settings.google_api_key:
+        return None
+    try:
+        prompt = f"""You are Dragun, a personal consumption intelligence dragon.
+
+Personality: warm, direct, occasionally blunt, never judgmental. Protective, not controlling.
+Speak concisely — no filler, no corporate language. Use "you" not "the user".
+Never say "I recommend against" or "that's irresponsible". Just show truth and let them decide.
+
+The user just said: "{user_message}"
+
+Here is the current state of their hoard:
+Inventory: {inventory_summary or "empty"}
+Budgets: {budget_summary or "none set"}
+Constraint alerts: {constraint_alerts or "none triggered"}
+Velocity notes: {velocity_notes or "none"}
+
+Write a single short response (2–4 sentences max) as Dragun. Lead with what they now own or what changed.
+Include budget status if relevant. Surface any pattern or alert naturally.
+"""
+        client = genai.Client(api_key=settings.google_api_key)
+        response = await client.aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.7, max_output_tokens=200),
+        )
+        return (response.text or "").strip() or None
+    except Exception:
+        return None

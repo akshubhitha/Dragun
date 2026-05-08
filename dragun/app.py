@@ -31,7 +31,7 @@ from dragun.models import (
 )
 from dragun.services.budget import BudgetService
 from dragun.services.inventory import InventoryService
-from dragun.services.parser import parse_text_input
+from dragun.services.parser import generate_dragon_reply, parse_text_input_async
 from dragun.storage.base import DragunRepository
 from dragun.storage.firestore import FirestoreRepository
 from dragun.storage.memory import InMemoryDragunRepository
@@ -167,23 +167,26 @@ def delete_user(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dic
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo)) -> ChatResponse:
+async def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo)) -> ChatResponse:
     user = require_user(repo, request.user_id)
     text = request.message.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Say what is entering or leaving the hoard.")
 
-    lower = text.lower()
-    if lower.startswith("budget") or " budget" in lower:
-        return handle_budget_message(user.user_id, text)
-    if any(term in lower for term in ("limit", "cap", "don't let me", "dont let me", "warn me")):
-        return handle_constraint_message(user.user_id, text)
-    if re.search(r"\b(how many|inventory|what do i have|do i have)\b", lower):
+    # Parse with Gemini Flash if API key is present, deterministic fallback otherwise
+    parsed = await parse_text_input_async(text)
+
+    # Route budget/constraint intents
+    if parsed.intent == "budget_create":
+        return await handle_budget_message(user.user_id, text, parsed)
+    if parsed.intent == "constraint_create":
+        return handle_constraint_message(user.user_id, text, parsed)
+    if parsed.intent == "inventory_query":
         return inventory_question(user.user_id)
 
-    parsed = parse_text_input(text)
     if not parsed.items:
         return ChatResponse(reply="I need one clear item, quantity, or budget line to guard.")
+
     evaluation: PurchaseEvaluation | None = (
         budget_service.evaluate_purchase(user.user_id, parsed.items)
         if parsed.intent == "purchase"
@@ -194,13 +197,21 @@ def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo)) -> Ch
     budget_statuses = budget_service.get_budget_statuses(user.user_id)
     constraint_alerts = evaluation.constraint_alerts if evaluation else []
     velocity_notes = inventory_service.velocity_notes(user.user_id, events)
-    reply = build_dragon_reply(
-        inventory_rows,
-        budget_statuses,
-        constraint_alerts,
-        velocity_notes,
-        intent=parsed.intent,
+
+    # Build summary strings for Gemini reply prompt
+    inv_summary = ", ".join(f"{r.current_quantity} {r.item_normalized}" for r in inventory_rows[:10])
+    budget_summary = "; ".join(
+        f"{s.budget_scope} ${s.amount_remaining:.2f} left (${s.daily_pace:.2f}/day, {s.days_remaining}d)"
+        for s in budget_statuses
     )
+    alert_summary = " ".join(a.message for a in constraint_alerts)
+    vel_summary = " ".join(velocity_notes)
+
+    # Try Gemini reply, fall back to template
+    reply = await generate_dragon_reply(text, inv_summary, budget_summary, alert_summary, vel_summary)
+    if not reply:
+        reply = build_dragon_reply(inventory_rows, budget_statuses, constraint_alerts, velocity_notes, intent=parsed.intent)
+
     return ChatResponse(
         reply=reply,
         parsed=parsed,
@@ -223,8 +234,7 @@ def hash_passkey(passkey: str) -> str:
     return hashlib.sha256(f"{salt}:{passkey}".encode("utf-8")).hexdigest()
 
 
-def handle_budget_message(user_id: str, text: str) -> ChatResponse:
-    parsed = parse_text_input(text)
+async def handle_budget_message(user_id: str, text: str, parsed: any) -> ChatResponse:
     if parsed.budget_amount is None:
         return ChatResponse(reply="Name the budget amount, and the dragon will mark the coin line.")
     amount = parsed.budget_amount
@@ -240,11 +250,12 @@ def handle_budget_message(user_id: str, text: str) -> ChatResponse:
     )
     status = budget_service.get_budget_status(budget)
     period_label = "week" if parsed.period_type == PeriodType.WEEKLY else "month"
-    reply = f"Marked. {scope} budget is ${amount:.2f} for this {period_label}. ${status.amount_remaining:.2f} remains."
+    fallback = f"Marked. {scope} budget is ${amount:.2f} for this {period_label}. ${status.amount_remaining:.2f} remains."
+    reply = await generate_dragon_reply(text, "", f"{scope} ${status.amount_remaining:.2f} left", "", "") or fallback
     return ChatResponse(reply=reply, budgets=[status])
 
 
-def handle_constraint_message(user_id: str, text: str) -> ChatResponse:
+def handle_constraint_message(user_id: str, text: str, parsed: any) -> ChatResponse:
     lower = text.lower()
     number_match = re.search(r"(\d+(?:\.\d+)?)", lower)
     if not number_match:
