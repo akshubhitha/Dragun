@@ -7,9 +7,12 @@ No regex routing, no template strings — Gemini owns the whole flow.
 """
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from google import genai
+
+logger = logging.getLogger(__name__)
 from google.genai import types
 
 from dragun.config import get_settings
@@ -260,76 +263,73 @@ async def run_agent(
     if not settings.google_api_key:
         return None  # type: ignore[return-value]
 
-    # On Cloud Run use Vertex AI (ADC, no key needed); locally use AI Studio key
-    if settings.google_cloud_project and settings.use_firestore:
-        client = genai.Client(
-            vertexai=True,
-            project=settings.google_cloud_project,
-            location="us-central1",
-        )
-        model_name = "gemini-1.5-flash-001"
-    else:
+    try:
+        # Always use AI Studio API key — Vertex AI requires project-level model access grants
         client = genai.Client(api_key=settings.google_api_key)
         model_name = settings.gemini_model
-    tools, tool_fns = _make_tools(user, inventory_service, budget_service)
+        tools, tool_fns = _make_tools(user, inventory_service, budget_service)
 
-    # Build conversation history for this user
-    history = _conversation_history.get(user.user_id, [])
-    history.append(types.Content(role="user", parts=[types.Part(text=user_message)]))
+        # Build conversation history for this user
+        history = _conversation_history.get(user.user_id, [])
+        history.append(types.Content(role="user", parts=[types.Part(text=user_message)]))
 
-    # Agentic loop — Gemini may call multiple tools before replying
-    MAX_TURNS = 5
-    for _ in range(MAX_TURNS):
-        response = await client.aio.models.generate_content(
-            model=model_name,
-            contents=history,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                tools=tools,
-                temperature=0.7,
-                max_output_tokens=512,
-            ),
-        )
-
-        candidate = response.candidates[0]
-        history.append(types.Content(role="model", parts=candidate.content.parts))
-
-        # Check if Gemini wants to call any tools
-        tool_calls = [p for p in candidate.content.parts if p.function_call is not None]
-        if not tool_calls:
-            # No tool calls — Gemini is done, return the text reply
-            _conversation_history[user.user_id] = history[-20:]  # keep last 20 turns
-            text = "".join(p.text for p in candidate.content.parts if p.text)
-            return text.strip()
-
-        # Execute all requested tool calls and feed results back
-        tool_results = []
-        for part in tool_calls:
-            fn_name = part.function_call.name
-            fn_args = dict(part.function_call.args or {})
-            fn = tool_fns.get(fn_name)
-            if fn:
-                try:
-                    result = fn(**fn_args)
-                except Exception as e:
-                    result = {"error": str(e)}
-            else:
-                result = {"error": f"Unknown tool: {fn_name}"}
-
-            tool_results.append(
-                types.Part(
-                    function_response=types.FunctionResponse(
-                        name=fn_name,
-                        response={"result": result},
-                    )
-                )
+        # Agentic loop — Gemini may call multiple tools before replying
+        MAX_TURNS = 5
+        for _ in range(MAX_TURNS):
+            response = await client.aio.models.generate_content(
+                model=model_name,
+                contents=history,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    tools=tools,
+                    temperature=0.7,
+                    max_output_tokens=512,
+                ),
             )
 
-        history.append(types.Content(role="user", parts=tool_results))
+            candidate = response.candidates[0]
+            history.append(types.Content(role="model", parts=candidate.content.parts))
 
-    # Fallback if loop exhausted
-    _conversation_history[user.user_id] = history[-20:]
-    return "The hoard is updated. Ask me anything about your inventory or budgets."
+            # Check if Gemini wants to call any tools
+            tool_calls = [p for p in candidate.content.parts if p.function_call is not None]
+            if not tool_calls:
+                # No tool calls — Gemini is done, return the text reply
+                _conversation_history[user.user_id] = history[-20:]  # keep last 20 turns
+                text = "".join(p.text for p in candidate.content.parts if p.text)
+                return text.strip()
+
+            # Execute all requested tool calls and feed results back
+            tool_results = []
+            for part in tool_calls:
+                fn_name = part.function_call.name
+                fn_args = dict(part.function_call.args or {})
+                fn = tool_fns.get(fn_name)
+                if fn:
+                    try:
+                        result = fn(**fn_args)
+                    except Exception as e:
+                        result = {"error": str(e)}
+                else:
+                    result = {"error": f"Unknown tool: {fn_name}"}
+
+                tool_results.append(
+                    types.Part(
+                        function_response=types.FunctionResponse(
+                            name=fn_name,
+                            response={"result": result},
+                        )
+                    )
+                )
+
+            history.append(types.Content(role="user", parts=tool_results))
+
+        # Fallback if loop exhausted
+        _conversation_history[user.user_id] = history[-20:]
+        return "The hoard is updated. Ask me anything about your inventory or budgets."
+
+    except Exception:
+        logger.exception("Gemini agent failed (model=%s) — falling back to deterministic path", settings.gemini_model)
+        return None
 
 
 def clear_history(user_id: str) -> None:

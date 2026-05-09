@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     use_firestore: bool = Field(default=False, validation_alias="DRAGUN_USE_FIRESTORE")
     firestore_database: str = Field(default="(default)", validation_alias="FIRESTORE_DATABASE")
     firestore_emulator_host: str | None = Field(default=None, validation_alias="FIRESTORE_EMULATOR_HOST")
-    adk_model: str = Field(default="gemini-flash-latest", validation_alias="ADK_MODEL")
+    adk_model: str = Field(default="gemini-2.5-flash", validation_alias="ADK_MODEL")
     google_api_key: str | None = Field(default=None, validation_alias="GOOGLE_API_KEY")
     cors_origins: list[str] = Field(
         default_factory=lambda: ["*"],
