@@ -78,7 +78,8 @@ def index() -> FileResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     agent_name = root_agent.name if root_agent is not None else "dragun_coordinator"
-    return {"status": "ok", "model": settings.gemini_model, "agent": agent_name}
+    storage = "firestore" if settings.use_firestore else "memory"
+    return {"status": "ok", "model": settings.gemini_model, "agent": agent_name, "storage": storage}
 
 
 @app.post("/api/register", response_model=UserPublic)

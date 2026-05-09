@@ -246,7 +246,7 @@
   <div class="main">
     <div class="topbar">
       <div class="topbar-title" id="page-title">Overview</div>
-      <div class="topbar-chip"><div class="dot"></div> In-memory · local dev</div>
+      <div class="topbar-chip" id="storage-badge"><div class="dot"></div> <span id="storage-label">connecting...</span></div>
     </div>
     <div class="content">
 
@@ -443,6 +443,16 @@ function loginSuccess(user) {
   document.getElementById("sidebar-handle").textContent = "@" + user.handle;
   addMsg("dragun","Hoard opened for @"+user.handle+". What enters the lair?","ov-messages");
   addMsg("dragun","Hoard opened for @"+user.handle+". What enters the lair?","chat-messages");
+  fetch("/health").then(r=>r.json()).then(h=>{
+    const label = document.getElementById("storage-label");
+    if (h.storage === "firestore") {
+      label.textContent = "Firestore · cloud";
+      document.querySelector("#storage-badge .dot").style.background = "#10b981";
+    } else {
+      label.textContent = "In-memory · local dev";
+      document.querySelector("#storage-badge .dot").style.background = "#f59e0b";
+    }
+  }).catch(()=>{});
   refreshAll();
 }
 
