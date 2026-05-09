@@ -28,7 +28,6 @@ def _init_phoenix_tracing(api_key: str | None) -> None:
         tracer_provider = register(
             project_name="dragun",
             api_key=api_key,
-            endpoint="https://app.phoenix.arize.com/v1/traces",
         )
         GoogleGenAIInstrumentor().instrument(tracer_provider=tracer_provider)
         logger.info("Arize Phoenix tracing enabled — all Gemini calls traced")
