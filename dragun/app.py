@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
 import re
 from datetime import UTC, datetime
@@ -12,6 +13,27 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+logger = logging.getLogger(__name__)
+
+
+def _init_phoenix_tracing(api_key: str | None) -> None:
+    """Initialize Arize Phoenix OpenTelemetry tracing for all Gemini calls."""
+    if not api_key:
+        return
+    try:
+        from openinference.instrumentation.google_genai import GoogleGenAIInstrumentor
+        from phoenix.otel import register
+
+        tracer_provider = register(
+            project_name="dragun",
+            api_key=api_key,
+            endpoint="https://app.phoenix.arize.com/v1/traces",
+        )
+        GoogleGenAIInstrumentor().instrument(tracer_provider=tracer_provider)
+        logger.info("Arize Phoenix tracing enabled — all Gemini calls traced")
+    except Exception:
+        logger.warning("Arize Phoenix tracing failed to initialize", exc_info=True)
 
 from dragun.agents import root_agent
 from dragun.config import Settings, get_settings
@@ -47,6 +69,7 @@ def create_repository(settings: Settings) -> DragunRepository:
 
 
 settings = get_settings()
+_init_phoenix_tracing(settings.arize_api_key)
 repository = create_repository(settings)
 inventory_service = InventoryService(repository)
 budget_service = BudgetService(repository, inventory_service)

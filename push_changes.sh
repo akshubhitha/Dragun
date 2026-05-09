@@ -1,12 +1,24 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-git add dragun/app.py dragun/config.py dragun/static/index.html dragun/storage/firestore.py \
-         dragun/services/agent.py dragun/services/parser.py deploy.sh
-git commit -m "perf: Gemini context caching — upload tool schemas once, pay 25% per turn
+git add \
+  dragun/app.py \
+  dragun/config.py \
+  dragun/static/index.html \
+  dragun/storage/firestore.py \
+  dragun/services/agent.py \
+  dragun/services/parser.py \
+  deploy.sh \
+  pyproject.toml \
+  wipe_firestore.py \
+  push_changes.sh \
+  LICENSE
+git commit -m "feat: Arize Phoenix tracing + Gemini 2.5 Flash + context caching
 
-- services/agent.py: split tool declarations (static) from implementations (per-user)
-- _get_schema_cache(): uploads system instruction + tool schemas on first request, caches name globally
-- run_agent(): uses cached_content when cache is available, falls back to inline schema if not
-- ~75% reduction on the ~2K schema tokens sent every chat turn"
+- app.py: _init_phoenix_tracing() — instruments all Gemini calls via OTel
+- config.py: ARIZE_API_KEY env var
+- pyproject.toml: arize-phoenix-otel + openinference-instrumentation-google-genai
+- services/agent.py: context caching (~75% token cost reduction on schema prefix)
+- config.py: default model gemini-2.5-flash (1.5 and 2.0 retired May 2026)
+- deploy.sh: ARIZE_API_KEY env var, stable PASSKEY_SALT across deploys"
 git push origin main
 echo "✅ Pushed to GitHub."

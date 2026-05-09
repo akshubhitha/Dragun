@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     firestore_emulator_host: str | None = Field(default=None, validation_alias="FIRESTORE_EMULATOR_HOST")
     adk_model: str = Field(default="gemini-2.5-flash", validation_alias="ADK_MODEL")
     google_api_key: str | None = Field(default=None, validation_alias="GOOGLE_API_KEY")
+    arize_api_key: str | None = Field(default=None, validation_alias="ARIZE_API_KEY")
     cors_origins: list[str] = Field(
         default_factory=lambda: ["*"],
         validation_alias="CORS_ORIGINS",

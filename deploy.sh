@@ -8,7 +8,7 @@
 #   gcloud auth configure-docker us-central1-docker.pkg.dev
 #
 # Usage:
-#   bash deploy.sh <YOUR_GCP_PROJECT_ID> <YOUR_GEMINI_API_KEY> [PASSKEY_SALT]
+#   bash deploy.sh <YOUR_GCP_PROJECT_ID> <YOUR_GEMINI_API_KEY> [PASSKEY_SALT] [ARIZE_API_KEY]
 
 set -euo pipefail
 
@@ -113,7 +113,8 @@ FIRESTORE_DATABASE=(default),\
 ADK_MODEL=gemini-2.5-flash,\
 GOOGLE_API_KEY=$GEMINI_API_KEY,\
 DRAGUN_PASSKEY_SALT=$PASSKEY_SALT,\
-CORS_ORIGINS=[\"*\"]" \
+CORS_ORIGINS=[\"*\"],\
+ARIZE_API_KEY=${4:-}" \
   --quiet
 
 # ── 7. Print URL ─────────────────────────────────────────────────────────────
