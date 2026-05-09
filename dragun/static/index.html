@@ -388,7 +388,11 @@ const state = { userId: "", handle: "" };
 async function api(path, opts={}) {
   const r = await fetch(path, { headers:{"Content-Type":"application/json",...(opts.headers||{})}, ...opts });
   const b = await r.json();
-  if (!r.ok) throw new Error(b.detail || "The dragon coughed smoke.");
+  if (!r.ok) {
+    const detail = b.detail;
+    if (Array.isArray(detail)) throw new Error(detail.map(e => e.msg).join("; "));
+    throw new Error(typeof detail === "string" ? detail : "The dragon coughed smoke.");
+  }
   return b;
 }
 
@@ -426,6 +430,7 @@ document.getElementById("register-btn").addEventListener("click", async () => {
   const passkey = document.getElementById("reg-passkey").value;
   const zip = document.getElementById("reg-zip").value.trim();
   if (!handle||!passkey||!zip) { $err.textContent = "Fill in all fields."; return; }
+  if (passkey.length < 8) { $err.textContent = "Passkey must be at least 8 characters."; return; }
   if (!/^\d{5}$/.test(zip)) { $err.textContent = "Zip must be 5 digits."; return; }
   $err.textContent = "";
   try {
