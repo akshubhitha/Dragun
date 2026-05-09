@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from dragun.agents import root_agent
 from dragun.config import Settings, get_settings
+from dragun.services.agent import clear_history, run_agent
 from dragun.models import (
     BudgetCreateRequest,
     ChatRequest,
@@ -163,7 +164,15 @@ def export_user_data(user_id: str, repo: DragunRepository = Depends(get_repo)) -
 def delete_user(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict[str, str]:
     require_user(repo, user_id)
     repo.delete_user_data(user_id)
+    clear_history(user_id)
     return {"status": "deleted"}
+
+
+@app.post("/api/users/{user_id}/logout")
+def logout_user(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict[str, str]:
+    require_user(repo, user_id)
+    clear_history(user_id)
+    return {"status": "logged_out"}
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -173,10 +182,19 @@ async def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo))
     if not text:
         raise HTTPException(status_code=400, detail="Say what is entering or leaving the hoard.")
 
-    # Parse with Gemini Flash if API key is present, deterministic fallback otherwise
+    # ── Gemini agent path (function-calling orchestrator) ──────────────────────
+    # When GOOGLE_API_KEY is set, Gemini drives the whole conversation:
+    # it decides which tools to call, calls them against the real backend,
+    # and generates the dragon reply — no regex routing, no templates.
+    reply = await run_agent(text, user, inventory_service, budget_service)
+    if reply is not None:
+        inventory_rows = inventory_service.query_inventory(user.user_id)
+        budget_statuses = budget_service.get_budget_statuses(user.user_id)
+        return ChatResponse(reply=reply, inventory=inventory_rows, budgets=budget_statuses)
+
+    # ── Deterministic fallback (no API key) ────────────────────────────────────
     parsed = await parse_text_input_async(text)
 
-    # Route budget/constraint intents
     if parsed.intent == "budget_create":
         return await handle_budget_message(user.user_id, text, parsed)
     if parsed.intent == "constraint_create":
@@ -184,8 +202,17 @@ async def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo))
     if parsed.intent == "inventory_query":
         return inventory_question(user.user_id)
 
-    if not parsed.items:
-        return ChatResponse(reply="I need one clear item, quantity, or budget line to guard.")
+    if parsed.intent == "unknown" or not parsed.items:
+        inventory_rows = inventory_service.query_inventory(user.user_id)
+        budget_statuses = budget_service.get_budget_statuses(user.user_id)
+        inv_summary = ", ".join(f"{r.current_quantity} {r.item_normalized}" for r in inventory_rows[:10])
+        budget_summary = "; ".join(
+            f"{s.budget_scope} ${s.amount_remaining:.2f} left" for s in budget_statuses
+        )
+        fallback_reply = await generate_dragon_reply(text, inv_summary, budget_summary, "", "")
+        if not fallback_reply:
+            fallback_reply = conversational_fallback(text)
+        return ChatResponse(reply=fallback_reply, inventory=inventory_rows, budgets=budget_statuses)
 
     evaluation: PurchaseEvaluation | None = (
         budget_service.evaluate_purchase(user.user_id, parsed.items)
@@ -198,7 +225,6 @@ async def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo))
     constraint_alerts = evaluation.constraint_alerts if evaluation else []
     velocity_notes = inventory_service.velocity_notes(user.user_id, events)
 
-    # Build summary strings for Gemini reply prompt
     inv_summary = ", ".join(f"{r.current_quantity} {r.item_normalized}" for r in inventory_rows[:10])
     budget_summary = "; ".join(
         f"{s.budget_scope} ${s.amount_remaining:.2f} left (${s.daily_pace:.2f}/day, {s.days_remaining}d)"
@@ -207,13 +233,12 @@ async def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo))
     alert_summary = " ".join(a.message for a in constraint_alerts)
     vel_summary = " ".join(velocity_notes)
 
-    # Try Gemini reply, fall back to template
-    reply = await generate_dragon_reply(text, inv_summary, budget_summary, alert_summary, vel_summary)
-    if not reply:
-        reply = build_dragon_reply(inventory_rows, budget_statuses, constraint_alerts, velocity_notes, intent=parsed.intent)
+    fallback_reply = await generate_dragon_reply(text, inv_summary, budget_summary, alert_summary, vel_summary)
+    if not fallback_reply:
+        fallback_reply = build_dragon_reply(inventory_rows, budget_statuses, constraint_alerts, velocity_notes, intent=parsed.intent)
 
     return ChatResponse(
-        reply=reply,
+        reply=fallback_reply,
         parsed=parsed,
         events=events,
         inventory=inventory_rows,
@@ -288,6 +313,16 @@ def handle_constraint_message(user_id: str, text: str, parsed: any) -> ChatRespo
         ),
     )
     return ChatResponse(reply=f"Guard set. I will flag {item} when it crosses {threshold:g}.", constraints=[constraint])
+
+
+def conversational_fallback(text: str) -> str:
+    """Friendly fallback reply when Gemini is unavailable and input isn't a command."""
+    greetings = {"hey", "hi", "hello", "sup", "yo", "hiya", "howdy"}
+    if text.strip().lower().rstrip("!? ") in greetings:
+        return "Hey. Tell me what you bought, what you own, or what you want to guard. I track hoards."
+    if "?" in text:
+        return "Good question. Add a Gemini API key to .env and I'll give you a real answer. For now: tell me what you bought or own."
+    return "I didn't catch that as a purchase, inventory update, or budget command. Try: '3 shirts — 50 bucks' or 'budget 200 for clothing'."
 
 
 def inventory_question(user_id: str) -> ChatResponse:
