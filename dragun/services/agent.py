@@ -260,7 +260,7 @@ async def run_agent(
     if not settings.google_api_key:
         return None  # type: ignore[return-value]
 
-    client = genai.Client(api_key=settings.google_api_key)
+    client = genai.Client(api_key=settings.google_api_key, http_options={"api_version": "v1"})
     tools, tool_fns = _make_tools(user, inventory_service, budget_service)
 
     # Build conversation history for this user

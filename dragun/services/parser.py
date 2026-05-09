@@ -85,7 +85,7 @@ Rules:
 Input: {raw_input}
 """
         try:
-            client = genai.Client(api_key=settings.google_api_key)
+            client = genai.Client(api_key=settings.google_api_key, http_options={"api_version": "v1"})
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
                 contents=prompt,
