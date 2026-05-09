@@ -14,7 +14,25 @@ set -euo pipefail
 
 PROJECT_ID="${1:-}"
 GEMINI_API_KEY="${2:-}"
-PASSKEY_SALT="${3:-$(openssl rand -hex 16)}"
+
+# PASSKEY_SALT must never change after first deploy — it's the key that hashes all passwords.
+# If a third arg is given, use it. Otherwise try to read the existing value from Cloud Run.
+# Only generate a new random salt if the service doesn't exist yet (first deploy).
+if [[ -n "${3:-}" ]]; then
+  PASSKEY_SALT="$3"
+else
+  EXISTING_SALT=$(gcloud run services describe dragun --region us-central1 \
+    --format "value(spec.template.spec.containers[0].env)" 2>/dev/null \
+    | tr ',' '\n' | grep DRAGUN_PASSKEY_SALT | cut -d= -f2 || true)
+  if [[ -n "$EXISTING_SALT" ]]; then
+    PASSKEY_SALT="$EXISTING_SALT"
+    echo "ℹ️  Reusing existing PASSKEY_SALT from Cloud Run (logins preserved)"
+  else
+    PASSKEY_SALT=$(openssl rand -hex 16)
+    echo "ℹ️  First deploy — generated new PASSKEY_SALT: $PASSKEY_SALT"
+    echo "    Save this somewhere safe in case you ever need to redeploy from scratch."
+  fi
+fi
 REGION="us-central1"
 SERVICE="dragun"
 REPO="dragun-repo"
