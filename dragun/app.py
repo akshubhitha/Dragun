@@ -22,13 +22,16 @@ def _init_phoenix_tracing(api_key: str | None) -> None:
     if not api_key:
         return
     try:
+        import os
         from openinference.instrumentation.google_genai import GoogleGenAIInstrumentor
         from phoenix.otel import register
 
-        tracer_provider = register(
-            project_name="dragun",
-            api_key=api_key,
-        )
+        # Force HTTP/protobuf transport to Phoenix cloud
+        os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://app.phoenix.arize.com"
+        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"api_key={api_key}"
+        os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
+
+        tracer_provider = register(project_name="dragun")
         GoogleGenAIInstrumentor().instrument(tracer_provider=tracer_provider)
         logger.info("Arize Phoenix tracing enabled — all Gemini calls traced")
     except Exception:
