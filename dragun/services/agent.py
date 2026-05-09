@@ -11,8 +11,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from google import genai
-
-logger = logging.getLogger(__name__)
 from google.genai import types
 
 from dragun.config import get_settings
@@ -30,8 +28,14 @@ if TYPE_CHECKING:
     from dragun.services.budget import BudgetService
     from dragun.services.inventory import InventoryService
 
+logger = logging.getLogger(__name__)
+
 # Per-user conversation history (in-memory, resets on server restart)
 _conversation_history: dict[str, list[types.Content]] = {}
+
+# Cached context: system instruction + tool declarations uploaded once per server start.
+# Cached tokens cost ~25% of normal input token price — no need to resend 2K tokens every turn.
+_schema_cache_name: str | None = None
 
 SYSTEM_INSTRUCTION = """You are Dragun, a personal consumption intelligence dragon. You guard the user's hoard.
 
@@ -57,6 +61,56 @@ After calling tools, write a natural reply (2–4 sentences) as Dragun:
 - Never make up numbers not returned by the tools
 - Never say "I recommend against" or moralize
 """
+
+
+def _tool_declarations() -> list[types.Tool]:
+    """Static tool schemas — same for every user. Used for context caching."""
+    # Minimal stubs so _fn_to_declaration can introspect signatures/docstrings.
+    def log_purchase(items_text: str, total_cost: float | None = None) -> None:
+        """Log items the user just bought. items_text is a plain description like '3 shirts, 2 dresses'.
+        total_cost is the total spent in dollars (optional)."""
+    def set_inventory_baseline(items_text: str) -> None:
+        """Record items the user already owns (not a purchase). items_text like 'I have 12 shirts, 6 pants'."""
+    def get_inventory(item_filter: str | None = None) -> None:
+        """Get the user's current inventory. Optionally filter by item name or tag."""
+    def get_budget_status(scope: str | None = None) -> None:
+        """Get current budget status. Optionally filter by scope/category."""
+    def set_budget(scope: str, amount: float, period: str = "monthly") -> None:
+        """Create or update a spending budget. scope is the category (e.g. 'clothing', 'dining', 'all').
+        amount is in dollars. period is 'monthly' or 'weekly'."""
+    def set_inventory_cap(item: str, max_count: int) -> None:
+        """Set a cap on how many of an item the user wants to own. item is the item name, max_count is the limit."""
+
+    return [types.Tool(function_declarations=[
+        _fn_to_declaration(log_purchase),
+        _fn_to_declaration(set_inventory_baseline),
+        _fn_to_declaration(get_inventory),
+        _fn_to_declaration(get_budget_status),
+        _fn_to_declaration(set_budget),
+        _fn_to_declaration(set_inventory_cap),
+    ])]
+
+
+async def _get_schema_cache(client: genai.Client, model_name: str) -> str | None:
+    """Return cached content name, creating it on first call. Returns None on failure."""
+    global _schema_cache_name
+    if _schema_cache_name:
+        return _schema_cache_name
+    try:
+        cache = await client.aio.caches.create(
+            model=model_name,
+            config=types.CreateCachedContentConfig(
+                system_instruction=SYSTEM_INSTRUCTION,
+                tools=_tool_declarations(),
+                ttl="3600s",  # 1 hour — refresh on next cold start
+            ),
+        )
+        _schema_cache_name = cache.name
+        logger.info("Created Gemini context cache: %s", cache.name)
+        return _schema_cache_name
+    except Exception:
+        logger.warning("Context caching unavailable — sending full schema each turn", exc_info=True)
+        return None
 
 
 def _make_tools(
@@ -267,7 +321,11 @@ async def run_agent(
         # Always use AI Studio API key — Vertex AI requires project-level model access grants
         client = genai.Client(api_key=settings.google_api_key)
         model_name = settings.gemini_model
-        tools, tool_fns = _make_tools(user, inventory_service, budget_service)
+        _tools, tool_fns = _make_tools(user, inventory_service, budget_service)
+
+        # Try to use cached schema (system instruction + tool declarations uploaded once).
+        # Falls back to sending them inline if caching is unavailable.
+        cache_name = await _get_schema_cache(client, model_name)
 
         # Build conversation history for this user
         history = _conversation_history.get(user.user_id, [])
@@ -276,15 +334,25 @@ async def run_agent(
         # Agentic loop — Gemini may call multiple tools before replying
         MAX_TURNS = 5
         for _ in range(MAX_TURNS):
+            if cache_name:
+                # Cached path: schema tokens cost ~25% — no system_instruction or tools in config
+                gen_config = types.GenerateContentConfig(
+                    cached_content=cache_name,
+                    temperature=0.7,
+                    max_output_tokens=512,
+                )
+            else:
+                # Fallback: send full schema every turn
+                gen_config = types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    tools=_tools,
+                    temperature=0.7,
+                    max_output_tokens=512,
+                )
             response = await client.aio.models.generate_content(
                 model=model_name,
                 contents=history,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    tools=tools,
-                    temperature=0.7,
-                    max_output_tokens=512,
-                ),
+                config=gen_config,
             )
 
             candidate = response.candidates[0]
