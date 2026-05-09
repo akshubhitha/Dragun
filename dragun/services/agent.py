@@ -267,7 +267,7 @@ async def run_agent(
             project=settings.google_cloud_project,
             location="us-central1",
         )
-        model_name = "gemini-2.0-flash-001"
+        model_name = "gemini-1.5-flash-001"
     else:
         client = genai.Client(api_key=settings.google_api_key)
         model_name = settings.gemini_model
