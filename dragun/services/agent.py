@@ -260,7 +260,17 @@ async def run_agent(
     if not settings.google_api_key:
         return None  # type: ignore[return-value]
 
-    client = genai.Client(api_key=settings.google_api_key, http_options={"api_version": "v1"})
+    # On Cloud Run use Vertex AI (ADC, no key needed); locally use AI Studio key
+    if settings.google_cloud_project and settings.use_firestore:
+        client = genai.Client(
+            vertexai=True,
+            project=settings.google_cloud_project,
+            location="us-central1",
+        )
+        model_name = "gemini-2.0-flash-001"
+    else:
+        client = genai.Client(api_key=settings.google_api_key)
+        model_name = settings.gemini_model
     tools, tool_fns = _make_tools(user, inventory_service, budget_service)
 
     # Build conversation history for this user
@@ -271,7 +281,7 @@ async def run_agent(
     MAX_TURNS = 5
     for _ in range(MAX_TURNS):
         response = await client.aio.models.generate_content(
-            model=settings.gemini_model,
+            model=model_name,
             contents=history,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,

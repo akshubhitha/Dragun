@@ -45,7 +45,18 @@ gcloud services enable \
   run.googleapis.com \
   firestore.googleapis.com \
   artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com \
+  storage.googleapis.com \
+  aiplatform.googleapis.com \
   --quiet
+
+# ── 2b. Grant Cloud Run SA Vertex AI access ──────────────────────────────────
+echo "→ Granting Vertex AI User role to Cloud Run service account..."
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user" \
+  --quiet 2>/dev/null || true
 
 # ── 3. Create Artifact Registry repo (idempotent) ───────────────────────────
 echo "→ Creating Artifact Registry repo..."
