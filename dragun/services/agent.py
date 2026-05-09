@@ -7,7 +7,6 @@ No regex routing, no template strings — Gemini owns the whole flow.
 """
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 from google import genai
@@ -22,7 +21,7 @@ from dragun.models import (
     PeriodType,
     User,
 )
-from dragun.services.parser import parse_text_input_async
+from dragun.services.parser import parse_text_fallback
 
 if TYPE_CHECKING:
     from dragun.services.budget import BudgetService
@@ -67,11 +66,10 @@ def _make_tools(
     def log_purchase(items_text: str, total_cost: float | None = None) -> dict[str, Any]:
         """Log items the user just bought. items_text is a plain description like '3 shirts, 2 dresses'.
         total_cost is the total spent in dollars (optional)."""
-        import asyncio
         text = items_text
         if total_cost is not None:
             text = f"{items_text} — ${total_cost}"
-        parsed = asyncio.get_event_loop().run_until_complete(parse_text_input_async(text))
+        parsed = parse_text_fallback(text)
         if not parsed.items:
             return {"status": "error", "message": "Could not parse items from description."}
         events = inventory_service.log_items(user, parsed, input_source="text")
@@ -90,8 +88,7 @@ def _make_tools(
 
     def set_inventory_baseline(items_text: str) -> dict[str, Any]:
         """Record items the user already owns (not a purchase). items_text like 'I have 12 shirts, 6 pants'."""
-        import asyncio
-        parsed = asyncio.get_event_loop().run_until_complete(parse_text_input_async(items_text))
+        parsed = parse_text_fallback(items_text)
         if not parsed.items:
             return {"status": "error", "message": "Could not parse items."}
         parsed.intent = "manual_inventory"  # type: ignore[assignment]
