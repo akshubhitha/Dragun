@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import base64
+import json
 import logging
 import os
 import random
@@ -12,7 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -101,9 +103,12 @@ def get_repo() -> DragunRepository:
 
 
 # ── OTP store ──────────────────────────────────────────────────────────────────
-# { email: { "code": str, "expires_at": datetime, "username": str|None } }
+# { email: { "code": str, "expires_at": datetime, "attempts": int, "last_sent_at": datetime } }
 _otp_store: dict[str, dict] = {}
 _OTP_TTL_MINUTES = 10
+_OTP_MAX_ATTEMPTS = 5
+_OTP_RESEND_COOLDOWN_SECONDS = 60
+_SESSION_TTL_DAYS = 30
 
 
 def _generate_otp() -> str:
@@ -115,6 +120,70 @@ def _purge_expired_otps() -> None:
     expired = [email for email, entry in _otp_store.items() if entry["expires_at"] < now]
     for email in expired:
         del _otp_store[email]
+
+
+def _b64encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _b64decode(data: str) -> bytes:
+    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+
+
+def _session_secret() -> str:
+    return (
+        settings.session_secret
+        or os.environ.get("DRAGUN_PASSKEY_SALT")
+        or settings.google_api_key
+        or "local-dev-session-secret"
+    )
+
+
+def create_session_token(user_id: str) -> str:
+    expires_at = datetime.now(UTC) + timedelta(days=_SESSION_TTL_DAYS)
+    payload = _b64encode(
+        json.dumps(
+            {"sub": user_id, "exp": int(expires_at.timestamp())},
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    signature = hmac.new(
+        _session_secret().encode("utf-8"),
+        payload.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return f"{payload}.{_b64encode(signature)}"
+
+
+def verify_session_token(token: str | None) -> str | None:
+    if not token or "." not in token:
+        return None
+    payload, signature = token.split(".", 1)
+    expected = _b64encode(
+        hmac.new(
+            _session_secret().encode("utf-8"),
+            payload.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+    )
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        claims = json.loads(_b64decode(payload))
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if int(claims.get("exp", 0)) < int(datetime.now(UTC).timestamp()):
+        return None
+    subject = claims.get("sub")
+    return subject if isinstance(subject, str) else None
+
+
+def _bearer_token(request: Request) -> str | None:
+    header = request.headers.get("authorization", "")
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return token
 
 
 async def _send_otp_email(to_email: str, code: str, username: str | None, is_new: bool) -> bool:
@@ -187,12 +256,25 @@ async def send_otp(request: SendOTPRequest, repo: DragunRepository = Depends(get
     _purge_expired_otps()
     existing_user = repo.get_user_by_email(email)
     is_new = existing_user is None
+    now = datetime.now(UTC)
+
+    existing_entry = _otp_store.get(email)
+    if existing_entry and existing_entry.get("last_sent_at"):
+        elapsed = (now - existing_entry["last_sent_at"]).total_seconds()
+        if elapsed < _OTP_RESEND_COOLDOWN_SECONDS:
+            retry_after = int(_OTP_RESEND_COOLDOWN_SECONDS - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Code already sent. Try again in {retry_after} seconds.",
+            )
 
     code = _generate_otp()
     _otp_store[email] = {
         "code": code,
-        "expires_at": datetime.now(UTC) + timedelta(minutes=_OTP_TTL_MINUTES),
+        "expires_at": now + timedelta(minutes=_OTP_TTL_MINUTES),
         "is_new": is_new,
+        "attempts": 0,
+        "last_sent_at": now,
     }
 
     sent = await _send_otp_email(email, code, None, is_new)
@@ -214,6 +296,10 @@ async def verify_otp(request: VerifyOTPRequest, repo: DragunRepository = Depends
         del _otp_store[email]
         raise HTTPException(status_code=400, detail="That code expired. Request a new one.")
     if entry["code"] != request.code.strip():
+        entry["attempts"] = int(entry.get("attempts", 0)) + 1
+        if entry["attempts"] >= _OTP_MAX_ATTEMPTS:
+            del _otp_store[email]
+            raise HTTPException(status_code=429, detail="Too many wrong codes. Request a new one.")
         raise HTTPException(status_code=400, detail="Wrong code. Check your email and try again.")
 
     # Code is valid — consume it
@@ -222,7 +308,11 @@ async def verify_otp(request: VerifyOTPRequest, repo: DragunRepository = Depends
     existing_user = repo.get_user_by_email(email)
     if existing_user:
         pub = UserPublic.from_user(existing_user)
-        return {**pub.model_dump(mode="json"), "is_new_user": False}
+        return {
+            **pub.model_dump(mode="json"),
+            "is_new_user": False,
+            "session_token": create_session_token(existing_user.user_id),
+        }
 
     # New user — create account with a temp handle; onboarding will set the real one
     new_id = str(uuid4())
@@ -236,12 +326,22 @@ async def verify_otp(request: VerifyOTPRequest, repo: DragunRepository = Depends
     )
     repo.create_user(user)
     pub = UserPublic.from_user(user)
-    return {**pub.model_dump(mode="json"), "is_new_user": True}
+    return {
+        **pub.model_dump(mode="json"),
+        "is_new_user": True,
+        "session_token": create_session_token(user.user_id),
+    }
 
 
 @app.patch("/api/users/{user_id}/handle")
-def set_user_handle(user_id: str, body: dict, repo: DragunRepository = Depends(get_repo)) -> dict:
+def set_user_handle(
+    user_id: str,
+    body: dict,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
     """Set / change a user's handle. Called from onboarding to claim their chosen username."""
+    require_user_session(repo, user_id, request)
     handle = (body.get("handle") or "").strip().lower()
     if not handle:
         raise HTTPException(status_code=400, detail="Handle cannot be empty.")
@@ -262,8 +362,14 @@ def set_user_handle(user_id: str, body: dict, repo: DragunRepository = Depends(g
 
 
 @app.patch("/api/users/{user_id}/profile")
-def update_profile(user_id: str, body: dict, repo: DragunRepository = Depends(get_repo)) -> dict:
+def update_profile(
+    user_id: str,
+    body: dict,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
     """Save financial profile fields collected during onboarding."""
+    require_user_session(repo, user_id, request)
     allowed = {"monthly_income", "fixed_costs_floor"}
     updates = {k: float(v) for k, v in body.items() if k in allowed and v is not None}
     try:
@@ -274,21 +380,26 @@ def update_profile(user_id: str, body: dict, repo: DragunRepository = Depends(ge
 
 
 @app.delete("/api/users/{user_id}")
-def delete_account(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict:
+def delete_account(
+    user_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
     """Anonymise the user — strips PII but keeps spending data as synthetic records."""
-    user = repo.get_user(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+    require_user_session(repo, user_id, request)
     repo.anonymize_user(user_id)
+    clear_history(user_id)
     return {"status": "anonymized"}
 
 
 @app.get("/api/users/{user_id}/me")
-def get_me(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict:
+def get_me(
+    user_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
     """Restore a session — returns the user if found, 404 otherwise."""
-    user = repo.get_user(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
+    user = require_user_session(repo, user_id, request)
     return UserPublic.from_user(user).model_dump(mode="json")
 
 
@@ -309,38 +420,45 @@ def health() -> dict[str, str]:
     return {"status": "ok", "model": settings.gemini_model, "agent": agent_name, "storage": storage}
 
 
-@app.post("/api/register", response_model=UserPublic)
-def register_user(request: RegisterRequest, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
-    existing = repo.get_user_by_handle(request.handle)
+@app.post("/api/register")
+def register_user(payload: RegisterRequest, repo: DragunRepository = Depends(get_repo)) -> dict:
+    existing = repo.get_user_by_handle(payload.handle)
     if existing:
         raise HTTPException(status_code=409, detail="That handle is already guarding a hoard.")
 
     user = User(
         user_id=str(uuid4()),
-        handle=request.handle,
-        passkey_hash=hash_passkey(request.passkey),
-        zip_code=request.zip_code,
+        handle=payload.handle,
+        passkey_hash=hash_passkey(payload.passkey),
+        zip_code=payload.zip_code,
         currency="USD",
         created_at=datetime.now(UTC),
     )
     repo.create_user(user)
-    return UserPublic.from_user(user)
+    return {
+        **UserPublic.from_user(user).model_dump(mode="json"),
+        "session_token": create_session_token(user.user_id),
+    }
 
 
-@app.post("/api/login", response_model=UserPublic)
-def login_user(request: LoginRequest, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
-    user = repo.get_user_by_handle(request.handle)
+@app.post("/api/login")
+def login_user(payload: LoginRequest, repo: DragunRepository = Depends(get_repo)) -> dict:
+    user = repo.get_user_by_handle(payload.handle)
     # Use constant-time comparison to prevent timing attacks
     if not user or not hmac.compare_digest(
         user.passkey_hash,
-        hash_passkey(request.passkey),
+        hash_passkey(payload.passkey),
     ):
         raise HTTPException(status_code=401, detail="Wrong handle or passkey. The dragon is suspicious.")
-    return UserPublic.from_user(user)
+    return {
+        **UserPublic.from_user(user).model_dump(mode="json"),
+        "session_token": create_session_token(user.user_id),
+    }
 
 
 @app.get("/api/users/{handle}", response_model=UserPublic)
 def get_user(handle: str, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
+    raise HTTPException(status_code=410, detail="Use OTP login to open a hoard.")
     user = repo.get_user_by_handle(handle)
     if not user:
         raise HTTPException(status_code=404, detail="No hoard found for that handle.")
@@ -350,11 +468,12 @@ def get_user(handle: str, repo: DragunRepository = Depends(get_repo)) -> UserPub
 @app.post("/api/users/{user_id}/budgets")
 def create_budget(
     user_id: str,
-    request: BudgetCreateRequest,
+    payload: BudgetCreateRequest,
+    request: Request,
     repo: DragunRepository = Depends(get_repo),
 ) -> dict:
-    user = require_user(repo, user_id)
-    budget = budget_service.create_budget(user.user_id, request)
+    user = require_user_session(repo, user_id, request)
+    budget = budget_service.create_budget(user.user_id, payload)
     status = budget_service.get_budget_status(budget)
     return {"budget": budget, "status": status}
 
@@ -362,51 +481,56 @@ def create_budget(
 @app.post("/api/users/{user_id}/constraints")
 def create_constraint(
     user_id: str,
-    request: ConstraintCreateRequest,
+    payload: ConstraintCreateRequest,
+    request: Request,
     repo: DragunRepository = Depends(get_repo),
 ) -> dict:
-    user = require_user(repo, user_id)
-    constraint = budget_service.create_constraint(user.user_id, request)
+    user = require_user_session(repo, user_id, request)
+    constraint = budget_service.create_constraint(user.user_id, payload)
     return {"constraint": constraint}
 
 
 @app.get("/api/users/{user_id}/inventory")
-def inventory(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict:
-    require_user(repo, user_id)
+def inventory(user_id: str, request: Request, repo: DragunRepository = Depends(get_repo)) -> dict:
+    require_user_session(repo, user_id, request)
     return {"inventory": inventory_service.query_inventory(user_id)}
 
 
 @app.get("/api/users/{user_id}/budgets/status")
-def budget_status(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict:
-    require_user(repo, user_id)
+def budget_status(user_id: str, request: Request, repo: DragunRepository = Depends(get_repo)) -> dict:
+    require_user_session(repo, user_id, request)
     return {"budgets": budget_service.get_budget_statuses(user_id)}
 
 
 @app.get("/api/users/{user_id}/export")
-def export_user_data(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict:
-    user = require_user(repo, user_id)
+def export_user_data(user_id: str, request: Request, repo: DragunRepository = Depends(get_repo)) -> dict:
+    user = require_user_session(repo, user_id, request)
     return repo.export_user_data(user.user_id)
 
 
-@app.delete("/api/users/{user_id}")
-def delete_user(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict[str, str]:
-    require_user(repo, user_id)
+@app.delete("/api/users/{user_id}/hard-delete")
+def delete_user(
+    user_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict[str, str]:
+    require_user_session(repo, user_id, request)
     repo.delete_user_data(user_id)
     clear_history(user_id)
     return {"status": "deleted"}
 
 
 @app.post("/api/users/{user_id}/logout")
-def logout_user(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict[str, str]:
-    require_user(repo, user_id)
+def logout_user(user_id: str, request: Request, repo: DragunRepository = Depends(get_repo)) -> dict[str, str]:
+    require_user_session(repo, user_id, request)
     clear_history(user_id)
     return {"status": "logged_out"}
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo)) -> ChatResponse:
-    user = require_user(repo, request.user_id)
-    text = request.message.strip()
+async def chat(payload: ChatRequest, request: Request, repo: DragunRepository = Depends(get_repo)) -> ChatResponse:
+    user = require_user_session(repo, payload.user_id, request)
+    text = payload.message.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Say what is entering or leaving the hoard.")
 
@@ -447,7 +571,7 @@ async def chat(request: ChatRequest, repo: DragunRepository = Depends(get_repo))
         if parsed.intent == "purchase"
         else None
     )
-    events = inventory_service.log_items(user, parsed, input_source=request.input_source)
+    events = inventory_service.log_items(user, parsed, input_source=payload.input_source)
     inventory_rows = inventory_service.query_inventory(user.user_id)
     budget_statuses = budget_service.get_budget_statuses(user.user_id)
     constraint_alerts = evaluation.constraint_alerts if evaluation else []
@@ -480,6 +604,13 @@ def require_user(repo: DragunRepository, user_id: str) -> User:
     if not user:
         raise HTTPException(status_code=404, detail="No hoard found for that user.")
     return user
+
+
+def require_user_session(repo: DragunRepository, user_id: str, request: Request) -> User:
+    token_user_id = verify_session_token(_bearer_token(request))
+    if token_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Session expired. Sign in again.")
+    return require_user(repo, user_id)
 
 
 def hash_passkey(passkey: str) -> str:

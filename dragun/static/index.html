@@ -430,11 +430,13 @@
 
 <script>
 /* ════ STATE ════ */
-const state = { userId: "", handle: "" };
+const state = { userId: "", handle: "", sessionToken: "" };
 
 /* ════ API ════ */
 async function api(path, opts={}) {
-  const r = await fetch(path, { headers:{"Content-Type":"application/json",...(opts.headers||{})}, ...opts });
+  const headers = {"Content-Type":"application/json",...(opts.headers||{})};
+  if (state.sessionToken && !headers.Authorization) headers.Authorization = "Bearer " + state.sessionToken;
+  const r = await fetch(path, { headers, ...opts });
   const b = await r.json();
   if (!r.ok) {
     const detail = b.detail;
@@ -460,7 +462,7 @@ let _pendingEmail = "";
       sessionStorage.removeItem("dragun_user");
       const user = JSON.parse(fromOnboarding);
       if (user && user.user_id) {
-        localStorage.setItem("dragun_session", JSON.stringify({ user_id: user.user_id, handle: user.handle }));
+        localStorage.setItem("dragun_session", JSON.stringify({ user_id: user.user_id, handle: user.handle, session_token: user.session_token }));
         loginSuccess(user);
         return;
       }
@@ -470,8 +472,11 @@ let _pendingEmail = "";
     if (stored) {
       const session = JSON.parse(stored);
       if (session && session.user_id) {
-        const user = await fetch(`/api/users/${session.user_id}/me`).then(r => r.ok ? r.json() : null).catch(() => null);
+        const user = await fetch(`/api/users/${session.user_id}/me`, {
+          headers: { Authorization: "Bearer " + session.session_token }
+        }).then(r => r.ok ? r.json() : null).catch(() => null);
         if (user && user.user_id) {
+          user.session_token = session.session_token;
           loginSuccess(user);
           return;
         }
@@ -588,8 +593,8 @@ document.getElementById("resend-btn").addEventListener("click", async () => {
 });
 
 function loginSuccess(user) {
-  state.userId = user.user_id; state.handle = user.handle;
-  try { localStorage.setItem("dragun_session", JSON.stringify({ user_id: user.user_id, handle: user.handle })); } catch(e) {}
+  state.userId = user.user_id; state.handle = user.handle; state.sessionToken = user.session_token || "";
+  try { localStorage.setItem("dragun_session", JSON.stringify({ user_id: user.user_id, handle: user.handle, session_token: state.sessionToken })); } catch(e) {}
   $login.style.display = "none"; $app.classList.add("visible");
   document.getElementById("sidebar-handle").textContent = "@" + user.handle;
   addMsg("dragun","Hoard opened for @"+user.handle+". What enters the lair?","ov-messages");
@@ -615,7 +620,7 @@ document.getElementById("logout-btn").addEventListener("click", () => {
 document.getElementById("delete-account-btn").addEventListener("click", async () => {
   if (!confirm("Delete your account?\n\nYour spending data stays on our servers as anonymous records — your name and email are permanently removed. This can't be undone.")) return;
   try {
-    await fetch(`/api/users/${state.userId}`, { method: "DELETE" });
+    await fetch(`/api/users/${state.userId}`, { method: "DELETE", headers: { Authorization: "Bearer " + state.sessionToken } });
   } catch(e) {}
   try { localStorage.removeItem("dragun_session"); } catch(e) {}
   location.reload();

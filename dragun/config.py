@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     adk_model: str = Field(default="gemini-2.5-flash", validation_alias="ADK_MODEL")
     google_api_key: str | None = Field(default=None, validation_alias="GOOGLE_API_KEY")
     arize_api_key: str | None = Field(default=None, validation_alias="ARIZE_API_KEY")
+    session_secret: str | None = Field(default=None, validation_alias="DRAGUN_SESSION_SECRET")
     resend_api_key: str | None = Field(default=None, validation_alias="RESEND_API_KEY")
     email_from: str = Field(default="support@mydragun.com", validation_alias="EMAIL_FROM")
     cors_origins: list[str] = Field(
