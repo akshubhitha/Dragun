@@ -44,7 +44,7 @@ TAG_KEYWORDS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("gym|fitness|massage|class|wellness", ("wellness",), "service"),
     ("restaurant|dinner|lunch|coffee|takeout", ("dining", "food"), "consumable"),
     ("milk|egg|bread|chicken|snack|grocery|groceries|food", ("food", "essentials"), "consumable"),
-    ("shirt|dress|pant|jean|shoe|jacket|sock|closet", ("clothing",), "durable"),
+    ("shirt|dress|pant|jean|shoe|jacket|sock|closet|short|sweat|trunk|hoodie|sweater|cardigan|coat|blazer|skirt|legging|underwear|bra|brief|boxer|swimsuit|bikini|hat|cap|belt|scarf|glove|boot|sandal|slipper|sneaker", ("clothing",), "durable"),
     ("soap|shampoo|deo|deodorant|toothpaste|vitamin", ("body care", "essentials"), "consumable"),
     ("charger|phone|cable|laptop|headphone", ("electronics",), "durable"),
 )

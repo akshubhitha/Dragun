@@ -113,6 +113,37 @@ class FirestoreRepository(DragunRepository):
                     output.setdefault(event_tag.event_id, []).append(tag_name)
         return output
 
+    def update_item_tags(self, user_id: str, item_normalized: str, new_tags: list[str]) -> int:
+        """Replace tags on all events for this user+item."""
+        events = (
+            self.client.collection("events")
+            .where(filter=firestore.FieldFilter("user_id", "==", user_id))
+            .where(filter=firestore.FieldFilter("item_normalized", "==", item_normalized))
+            .stream()
+        )
+        event_ids = [doc.id for doc in events]
+        if not event_ids:
+            return 0
+        # Upsert new tags
+        tags = [self.upsert_tag(t) for t in new_tags if t]
+        batch = self.client.batch()
+        for event_id in event_ids:
+            # Delete old event_tag docs for this event
+            old_docs = (
+                self.client.collection("event_tags")
+                .where(filter=firestore.FieldFilter("event_id", "==", event_id))
+                .stream()
+            )
+            for doc in old_docs:
+                batch.delete(doc.reference)
+            # Add new event_tag docs
+            for tag in tags:
+                event_tag = EventTag(event_id=event_id, tag_id=tag.tag_id)
+                ref = self.client.collection("event_tags").document(f"{event_id}_{tag.tag_id}")
+                batch.set(ref, event_tag.model_dump(mode="python"))
+        batch.commit()
+        return len(event_ids)
+
     def create_budget(self, budget: Budget) -> Budget:
         self.client.collection("budgets").document(budget.budget_id).set(
             budget.model_dump(mode="python")

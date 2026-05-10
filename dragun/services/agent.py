@@ -52,6 +52,8 @@ Your job:
 - When the user sets a budget → call set_budget
 - When the user sets an inventory cap or limit → call set_inventory_cap
 - When the user asks about budgets → call get_budget_status
+- When the user corrects a mistake or says "I actually have X" or "change it to X" → call correct_inventory
+- When the user says an item has the wrong tag/category or asks to change its category → call retag_item
 - For casual chat or questions → just reply, no tool needed
 
 After calling tools, write a natural reply (2–4 sentences) as Dragun:
@@ -80,6 +82,12 @@ def _tool_declarations() -> list[types.Tool]:
         amount is in dollars. period is 'monthly' or 'weekly'."""
     def set_inventory_cap(item: str, max_count: int) -> None:
         """Set a cap on how many of an item the user wants to own. item is the item name, max_count is the limit."""
+    def correct_inventory(item: str, correct_quantity: int) -> None:
+        """Correct the quantity of an item the user already owns. Use when the user says they made a mistake
+        or wants to set the exact count of something. item is the item name, correct_quantity is the true count."""
+    def retag_item(item: str, tags: str) -> None:
+        """Change the category tags on an inventory item. tags is a comma-separated list like 'clothing' or 'clothing,essentials'.
+        Use when the user says an item is tagged wrong or asks to change its category."""
 
     return [types.Tool(function_declarations=[
         _fn_to_declaration(log_purchase),
@@ -88,6 +96,8 @@ def _tool_declarations() -> list[types.Tool]:
         _fn_to_declaration(get_budget_status),
         _fn_to_declaration(set_budget),
         _fn_to_declaration(set_inventory_cap),
+        _fn_to_declaration(correct_inventory),
+        _fn_to_declaration(retag_item),
     ])]
 
 
@@ -251,6 +261,63 @@ def _make_tools(
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def correct_inventory(item: str, correct_quantity: int) -> dict[str, Any]:
+        """Correct the quantity of an item the user already owns. Use when the user says they made a mistake
+        or wants to set the exact count of something. item is the item name, correct_quantity is the true count."""
+        try:
+            item_normalized = item.lower().rstrip("s") if not item.lower().endswith("ss") else item.lower()
+            # Get current quantity
+            rows = inventory_service.query_inventory(user.user_id)
+            current = next((r.current_quantity for r in rows if r.item_normalized == item_normalized), 0)
+            delta = correct_quantity - current
+            if delta == 0:
+                return {"status": "no_change", "item": item_normalized, "quantity": correct_quantity}
+            # Log a correction event with the delta
+            correction_text = f"{abs(delta)} {item_normalized}"
+            parsed = parse_text_fallback(correction_text)
+            if parsed.items:
+                parsed.items[0].quantity = abs(delta)
+                if delta < 0:
+                    # Negative delta — log as a removal by setting quantity negative
+                    parsed.items[0].quantity = delta
+                parsed.intent = "manual_inventory"  # type: ignore[assignment]
+                inventory_service.log_items(user, parsed, input_source="correction")
+            inventory = inventory_service.query_inventory(user.user_id)
+            return {
+                "status": "corrected",
+                "item": item_normalized,
+                "previous_quantity": current,
+                "corrected_quantity": correct_quantity,
+                "current_inventory": [
+                    {"item": r.item_normalized, "quantity": r.current_quantity} for r in inventory[:15]
+                ],
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def retag_item(item: str, tags: str) -> dict[str, Any]:
+        """Change the category tags on an inventory item. tags is a comma-separated list like 'clothing' or 'clothing,essentials'.
+        Use when the user says an item is tagged wrong or asks to change its category."""
+        try:
+            item_normalized = item.lower().rstrip("s") if not item.lower().endswith("ss") else item.lower()
+            new_tags = [t.strip().lower() for t in tags.split(",") if t.strip()]
+            # Try exact match first, then singular
+            rows = inventory_service.query_inventory(user.user_id)
+            matched = next((r.item_normalized for r in rows if r.item_normalized == item_normalized), None)
+            if not matched:
+                matched = next((r.item_normalized for r in rows if item_normalized in r.item_normalized), None)
+            if not matched:
+                return {"status": "error", "message": f"Item '{item}' not found in inventory."}
+            updated = inventory_service.retag_item(user.user_id, matched, new_tags)
+            return {
+                "status": "retagged",
+                "item": matched,
+                "new_tags": new_tags,
+                "events_updated": updated,
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     return [
         types.Tool(function_declarations=[
             _fn_to_declaration(log_purchase),
@@ -259,6 +326,8 @@ def _make_tools(
             _fn_to_declaration(get_budget_status),
             _fn_to_declaration(set_budget),
             _fn_to_declaration(set_inventory_cap),
+            _fn_to_declaration(correct_inventory),
+            _fn_to_declaration(retag_item),
         ])
     ], {
         "log_purchase": log_purchase,
@@ -267,6 +336,8 @@ def _make_tools(
         "get_budget_status": get_budget_status,
         "set_budget": set_budget,
         "set_inventory_cap": set_inventory_cap,
+        "correct_inventory": correct_inventory,
+        "retag_item": retag_item,
     }
 
 

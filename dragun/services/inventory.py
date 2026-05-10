@@ -61,6 +61,10 @@ class InventoryService:
         tags_by_event = self.repository.list_event_tags([event.event_id for event in events])
         return compute_inventory(events, tags_by_event, item_filter=item_filter)
 
+    def retag_item(self, user_id: str, item_normalized: str, new_tags: list[str]) -> int:
+        """Replace tags on all events for this user+item. Returns number of events updated."""
+        return self.repository.update_item_tags(user_id, item_normalized, new_tags)
+
     def velocity_notes(self, user_id: str, new_events: list[Event]) -> list[str]:
         all_events = self.repository.list_events(user_id)
         notes: list[str] = []

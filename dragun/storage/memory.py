@@ -103,6 +103,20 @@ class InMemoryRepository(DragunRepository):
         with self._lock:
             return deepcopy(list(self.tags.values()))
 
+    def update_item_tags(self, user_id: str, item_normalized: str, new_tags: list[str]) -> int:
+        """Replace tags on all events for this user+item."""
+        with self._lock:
+            matching = [e for e in self.events.values() if e.user_id == user_id and e.item_normalized == item_normalized]
+            if not matching:
+                return 0
+            new_tag_objects = [self.upsert_tag(t) for t in new_tags if t]
+            for event in matching:
+                self.event_tags[event.event_id] = [
+                    EventTag(event_id=event.event_id, tag_id=tag.tag_id).model_dump()
+                    for tag in new_tag_objects
+                ]
+            return len(matching)
+
     def create_budget(self, budget: Budget) -> Budget:
         with self._lock:
             self.budgets[budget.budget_id] = deepcopy(budget)

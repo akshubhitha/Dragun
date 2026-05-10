@@ -49,6 +49,11 @@ class DragunRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def update_item_tags(self, user_id: str, item_normalized: str, new_tags: list[str]) -> int:
+        """Replace tags on all events for this user+item. Returns number of events updated."""
+        raise NotImplementedError
+
+    @abstractmethod
     def create_budget(self, budget: Budget) -> Budget:
         raise NotImplementedError
 
