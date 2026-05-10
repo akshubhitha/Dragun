@@ -8,7 +8,9 @@ No regex routing, no template strings — Gemini owns the whole flow.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from google import genai
 from google.genai import types
@@ -19,6 +21,8 @@ from dragun.models import (
     ConstraintCreateRequest,
     ConstraintOperator,
     ConstraintType,
+    Event,
+    EventType,
     PeriodType,
     User,
 )
@@ -54,7 +58,10 @@ Your job:
 - When the user asks about budgets → call get_budget_status
 - When the user corrects a mistake or says "I actually have X" or "change it to X" → call correct_inventory
 - When the user says an item has the wrong tag/category or asks to change its category → call retag_item
+- When the user says they got rid of, donated, sold, returned, lost, or threw away something → call remove_items
 - For casual chat or questions → just reply, no tool needed
+
+Always correct spelling in tool arguments — if the user says "shrt", pass "shirt"; "pant" for "pnts"; "shoes" for "shoees", etc. Normalize before calling any tool.
 
 After calling tools, write a natural reply (2–4 sentences) as Dragun:
 - Lead with what changed or what they now own
@@ -88,6 +95,9 @@ def _tool_declarations() -> list[types.Tool]:
     def retag_item(item: str, tags: str) -> None:
         """Change the category tags on an inventory item. tags is a comma-separated list like 'clothing' or 'clothing,essentials'.
         Use when the user says an item is tagged wrong or asks to change its category."""
+    def remove_items(items_text: str, reason: str = "discard") -> None:
+        """Log removal of items from the hoard. Use when the user says they got rid of, donated, returned, lost,
+        sold, or threw away items. items_text is like '2 shirts, 1 pair of jeans'. reason is 'discard', 'return', or 'consumed'."""
 
     return [types.Tool(function_declarations=[
         _fn_to_declaration(log_purchase),
@@ -98,6 +108,7 @@ def _tool_declarations() -> list[types.Tool]:
         _fn_to_declaration(set_inventory_cap),
         _fn_to_declaration(correct_inventory),
         _fn_to_declaration(retag_item),
+        _fn_to_declaration(remove_items),
     ])]
 
 
@@ -295,6 +306,41 @@ def _make_tools(
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def remove_items(items_text: str, reason: str = "discard") -> dict[str, Any]:
+        """Log removal of items from the hoard."""
+        parsed = parse_text_fallback(items_text)
+        if not parsed.items:
+            return {"status": "error", "message": "Could not parse items from description."}
+        reason_map = {"return": EventType.RETURN, "consumed": EventType.CONSUMPTION}
+        event_type = reason_map.get(reason.lower(), EventType.DISCARD)
+        events = []
+        for item in parsed.items:
+            event = Event(
+                event_id=str(uuid4()),
+                user_id=user.user_id,
+                event_type=event_type,
+                item_description=item.description,
+                item_normalized=item.item_normalized,
+                quantity=item.quantity,
+                unit_cost=item.unit_cost,
+                total_cost=item.total_cost,
+                lifespan_type=item.lifespan_type,
+                input_source="text",
+                raw_input=items_text,
+                event_timestamp=datetime.now(UTC),
+                created_at=datetime.now(UTC),
+            )
+            inventory_service.repository.create_event(event, item.suggested_tags)
+            events.append(event)
+        inventory = inventory_service.query_inventory(user.user_id)
+        return {
+            "status": "removed",
+            "items_removed": [{"item": e.item_normalized, "quantity": e.quantity} for e in events],
+            "current_inventory": [
+                {"item": r.item_normalized, "quantity": r.current_quantity} for r in inventory[:15]
+            ],
+        }
+
     def retag_item(item: str, tags: str) -> dict[str, Any]:
         """Change the category tags on an inventory item. tags is a comma-separated list like 'clothing' or 'clothing,essentials'.
         Use when the user says an item is tagged wrong or asks to change its category."""
@@ -338,6 +384,7 @@ def _make_tools(
         "set_inventory_cap": set_inventory_cap,
         "correct_inventory": correct_inventory,
         "retag_item": retag_item,
+        "remove_items": remove_items,
     }
 
 
