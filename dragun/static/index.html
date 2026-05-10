@@ -331,6 +331,7 @@
           <div class="chat-formula-bar">
             <span class="formula-prefix">fx</span>
             <input class="chat-input" id="ov-chat-input" placeholder='"3 shirts, 2 dresses — 50 bucks"  ·  "budget 200 for clothing this month"'/>
+            <button class="chat-send" id="ov-voice-btn" title="Speak to Dragun">🎙</button>
             <button class="chat-send" id="ov-chat-send">⏎ Send</button>
           </div>
         </div>
@@ -396,6 +397,7 @@
           <div class="chat-formula-bar">
             <span class="formula-prefix">fx</span>
             <input class="chat-input" id="chat-input" placeholder='"3 shirts, 2 dresses — 50 bucks"  ·  "budget 200 for clothing"  ·  "how many shirts do I have?"'/>
+            <button class="chat-send" id="chat-voice-btn" title="Speak to Dragun">🎙</button>
             <button class="chat-send" id="chat-send">⏎ Send</button>
           </div>
         </div>
@@ -735,11 +737,11 @@ function addMsg(who, text, cid) {
   c.appendChild(d); c.scrollTop=c.scrollHeight;
 }
 
-async function sendChat(msg, cid) {
+async function sendChat(msg, cid, source="text") {
   if(!state.userId||!msg) return;
   addMsg("user",msg,cid);
   try {
-    const r = await api("/api/chat",{method:"POST",body:JSON.stringify({user_id:state.userId,message:msg})});
+    const r = await api("/api/chat",{method:"POST",body:JSON.stringify({user_id:state.userId,message:msg,input_source:source})});
     addMsg("dragun",r.reply,cid);
     await refreshAll();
   } catch(e){ addMsg("dragun",e.message,cid); }
@@ -750,8 +752,39 @@ function bindChat(inputId, btnId, cid) {
   document.getElementById(btnId).addEventListener("click",()=>{ const m=inp.value.trim(); if(!m)return; inp.value=""; sendChat(m,cid); });
   inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ const m=inp.value.trim(); if(!m)return; inp.value=""; sendChat(m,cid); } });
 }
+function bindVoice(inputId, btnId, cid) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = document.getElementById(btnId);
+  const inp = document.getElementById(inputId);
+  if (!btn) return;
+  if (!SpeechRecognition) {
+    btn.disabled = true;
+    btn.title = "Voice input is not supported in this browser yet.";
+    return;
+  }
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  btn.addEventListener("click", () => {
+    btn.textContent = "…";
+    recognition.start();
+  });
+  recognition.addEventListener("result", event => {
+    const transcript = event.results[0][0].transcript.trim();
+    inp.value = transcript;
+    if (transcript) {
+      inp.value = "";
+      sendChat(transcript, cid, "voice");
+    }
+  });
+  recognition.addEventListener("end", () => { btn.textContent = "🎙"; });
+  recognition.addEventListener("error", () => { btn.textContent = "🎙"; });
+}
 bindChat("ov-chat-input","ov-chat-send","ov-messages");
 bindChat("chat-input","chat-send","chat-messages");
+bindVoice("ov-chat-input","ov-voice-btn","ov-messages");
+bindVoice("chat-input","chat-voice-btn","chat-messages");
 
 /* ════ INV LOG ════ */
 document.getElementById("inv-log-btn").addEventListener("click",()=>{
