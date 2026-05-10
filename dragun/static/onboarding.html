@@ -663,6 +663,13 @@ var income        = 0;
 var varQueue      = [];
 var varIdx        = 0;
 
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + (userData.session_token || '')
+  };
+}
+
 // All variable categories (shown in order; pain-selected ones go first)
 var allVarCats = ['food','dining','coffee','clothes','pets','home','fitness','subs','tech','going-out','skincare','saving'];
 
@@ -707,7 +714,7 @@ async function openHoard() {
     if (Object.keys(profileBody).length > 0) {
       await fetch('/api/users/' + userId + '/profile', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(profileBody)
       });
     }
@@ -717,7 +724,7 @@ async function openHoard() {
       if (b.amt > 0) {
         await fetch('/api/users/' + userId + '/budgets', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders(),
           body: JSON.stringify({
             budget_scope: b.cat.toLowerCase(),
             scope_tags: [b.cat.toLowerCase()],
@@ -773,7 +780,7 @@ async function submitUsername() {
     if (!userId) { go(1); return; }
     var res = await fetch('/api/users/' + userId + '/handle', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ handle: val })
     });
     var data = await res.json();
@@ -782,6 +789,7 @@ async function submitUsername() {
       return;
     }
     userData.handle = val;
+    if (data.session_token) userData.session_token = data.session_token;
     try { sessionStorage.setItem('dragun_user', JSON.stringify(userData)); } catch(e) {}
     var chat = document.getElementById('username-chat');
     chat.appendChild(userMsg(val));

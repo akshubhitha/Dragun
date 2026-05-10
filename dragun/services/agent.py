@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from types import UnionType
+from typing import TYPE_CHECKING, Any, get_args, get_origin, get_type_hints
 from uuid import uuid4
 
 from google import genai
@@ -158,8 +159,11 @@ def _make_tools(
         parsed = parse_text_fallback(text)
         if not parsed.items:
             return {"status": "error", "message": "Could not parse items from description."}
+        evaluation = budget_service.evaluate_purchase(user.user_id, parsed.items)
         events = inventory_service.log_items(user, parsed, input_source="text")
         inventory = inventory_service.query_inventory(user.user_id)
+        budget_statuses = budget_service.get_budget_statuses(user.user_id)
+        velocity_notes = inventory_service.velocity_notes(user.user_id, events)
         return {
             "status": "logged",
             "items_logged": [
@@ -170,6 +174,22 @@ def _make_tools(
                 {"item": r.item_normalized, "quantity": r.current_quantity, "tags": r.tags}
                 for r in inventory[:15]
             ],
+            "budget_statuses": [
+                {
+                    "scope": s.budget_scope,
+                    "amount_spent": round(s.amount_spent, 2),
+                    "amount_remaining": round(s.amount_remaining, 2),
+                    "daily_pace": round(s.daily_pace, 2),
+                    "days_remaining": s.days_remaining,
+                    "pct_consumed": round(s.pct_consumed * 100, 1),
+                }
+                for s in budget_statuses
+            ],
+            "constraint_alerts": [
+                {"type": a.constraint_type, "message": a.message}
+                for a in evaluation.constraint_alerts
+            ],
+            "velocity_notes": velocity_notes,
         }
 
     def set_inventory_baseline(items_text: str) -> dict[str, Any]:
@@ -260,6 +280,7 @@ def _make_tools(
     def set_inventory_cap(item: str, max_count: int) -> dict[str, Any]:
         """Set a cap on how many of an item the user wants to own. item is the item name, max_count is the limit."""
         try:
+            max_count = int(max_count)
             item_normalized = item.lower().rstrip("s") if not item.lower().endswith("ss") else item.lower()
             constraint = budget_service.create_constraint(
                 user.user_id,
@@ -284,6 +305,7 @@ def _make_tools(
         """Correct the quantity of an item the user already owns. Use when the user says they made a mistake
         or wants to set the exact count of something. item is the item name, correct_quantity is the true count."""
         try:
+            correct_quantity = int(correct_quantity)
             item_normalized = item.lower().rstrip("s") if not item.lower().endswith("ss") else item.lower()
             # Get current quantity
             rows = inventory_service.query_inventory(user.user_id)
@@ -300,7 +322,7 @@ def _make_tools(
                     # Negative delta — log as a removal by setting quantity negative
                     parsed.items[0].quantity = delta
                 parsed.intent = "manual_inventory"  # type: ignore[assignment]
-                inventory_service.log_items(user, parsed, input_source="correction")
+                inventory_service.log_items(user, parsed, input_source="manual")
             inventory = inventory_service.query_inventory(user.user_id)
             return {
                 "status": "corrected",
@@ -352,6 +374,7 @@ def _make_tools(
     def update_item_cost(item: str, unit_cost: float) -> dict[str, Any]:
         """Set or correct the average unit cost of an item."""
         try:
+            unit_cost = float(unit_cost)
             item_normalized = item.lower().rstrip("s") if not item.lower().endswith("ss") else item.lower()
             rows = inventory_service.query_inventory(user.user_id)
             matched = next((r.item_normalized for r in rows if r.item_normalized == item_normalized), None)
@@ -371,7 +394,7 @@ def _make_tools(
                 unit_cost=float(unit_cost),
                 total_cost=None,
                 lifespan_type=infer_lifespan_type(matched),
-                input_source="correction",
+                input_source="manual",
                 raw_input=f"price update: {matched} = ${unit_cost}",
                 event_timestamp=datetime.now(UTC),
                 created_at=datetime.now(UTC),
@@ -418,6 +441,8 @@ def _make_tools(
             _fn_to_declaration(set_inventory_cap),
             _fn_to_declaration(correct_inventory),
             _fn_to_declaration(retag_item),
+            _fn_to_declaration(remove_items),
+            _fn_to_declaration(update_item_cost),
         ])
     ], {
         "log_purchase": log_purchase,
@@ -437,16 +462,18 @@ def _fn_to_declaration(fn) -> types.FunctionDeclaration:
     """Build a Gemini FunctionDeclaration from a Python function's docstring and annotations."""
     import inspect
     sig = inspect.signature(fn)
+    hints = get_type_hints(fn)
     props: dict[str, Any] = {}
     required: list[str] = []
     for name, param in sig.parameters.items():
-        ann = param.annotation
+        ann = hints.get(name, param.annotation)
         prop: dict[str, Any] = {}
-        if ann in (str, str | None):
+        base_ann = _schema_base_type(ann)
+        if base_ann is str:
             prop["type"] = "STRING"
-        elif ann in (float, float | None, int, int | None):
+        elif base_ann in (float, int):
             prop["type"] = "NUMBER"
-        elif ann is bool:
+        elif base_ann is bool:
             prop["type"] = "BOOLEAN"
         else:
             prop["type"] = "STRING"
@@ -463,6 +490,20 @@ def _fn_to_declaration(fn) -> types.FunctionDeclaration:
         description=(fn.__doc__ or "").strip().split("\n")[0],
         parameters=schema,
     )
+
+
+def _schema_base_type(annotation: Any) -> Any:
+    origin = get_origin(annotation)
+    if origin in (UnionType, None):
+        args = get_args(annotation)
+        if args:
+            non_none = [arg for arg in args if arg is not type(None)]
+            return non_none[0] if non_none else str
+        return annotation
+    if origin is not None and str(origin) == "typing.Union":
+        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
+        return non_none[0] if non_none else str
+    return annotation
 
 
 async def run_agent(

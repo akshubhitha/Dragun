@@ -69,6 +69,7 @@ ADK_MODEL=gemini-2.5-flash
 GOOGLE_API_KEY=your-gemini-api-key        # from aistudio.google.com
 ARIZE_API_KEY=your-arize-api-key          # from app.phoenix.arize.com
 DRAGUN_PASSKEY_SALT=random-hex-string     # never change after first deploy
+DRAGUN_SESSION_SECRET=random-hex-string   # signs browser session tokens
 CORS_ORIGINS=["*"]
 ```
 
