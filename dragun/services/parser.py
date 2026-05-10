@@ -182,6 +182,7 @@ def _looks_like_inventory_query(text: str) -> bool:
 def _extract_items(raw_input: str) -> list[ParsedItem]:
     cleaned, total_cost = _strip_price(raw_input)
     cleaned = re.sub(r"\b(i have|currently have|own|bought|buying|get|got|about|around)\b", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"^\s*i\s+", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\bat\b.+$", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\bat\s*$", "", cleaned, flags=re.I)  # strip trailing "at"
     fragments = _split_item_fragments(cleaned)

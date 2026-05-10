@@ -44,7 +44,7 @@ def _init_phoenix_tracing(api_key: str | None) -> None:
 
 from dragun.agents import root_agent
 from dragun.config import Settings, get_settings
-from dragun.services.agent import clear_history, run_agent
+from dragun.services.agent import clear_history
 from dragun.models import (
     BudgetCreateRequest,
     ChatRequest,
@@ -61,7 +61,9 @@ from dragun.models import (
     UserPublic,
     VerifyOTPRequest,
 )
+from dragun.services.actions import AdvisorResponseService, BackendActionRouter
 from dragun.services.budget import BudgetService
+from dragun.services.intent import IntentExtractionService
 from dragun.services.inventory import InventoryService
 from dragun.services.parser import generate_dragon_reply, parse_text_input_async
 from dragun.storage.base import DragunRepository
@@ -82,6 +84,12 @@ _init_phoenix_tracing(settings.arize_api_key)
 repository = create_repository(settings)
 inventory_service = InventoryService(repository)
 budget_service = BudgetService(repository, inventory_service)
+intent_service = IntentExtractionService()
+action_router = BackendActionRouter(
+    inventory_service=inventory_service,
+    budget_service=budget_service,
+    advisor=AdvisorResponseService(),
+)
 
 app = FastAPI(
     title="Dragun",
@@ -534,68 +542,19 @@ async def chat(payload: ChatRequest, request: Request, repo: DragunRepository = 
     if not text:
         raise HTTPException(status_code=400, detail="Say what is entering or leaving the hoard.")
 
-    # ── Gemini agent path (function-calling orchestrator) ──────────────────────
-    # When GOOGLE_API_KEY is set, Gemini drives the whole conversation:
-    # it decides which tools to call, calls them against the real backend,
-    # and generates the dragon reply — no regex routing, no templates.
-    reply = await run_agent(text, user, inventory_service, budget_service)
-    if reply is not None:
-        inventory_rows = inventory_service.query_inventory(user.user_id)
-        budget_statuses = budget_service.get_budget_statuses(user.user_id)
-        return ChatResponse(reply=reply, inventory=inventory_rows, budgets=budget_statuses)
-
-    # ── Deterministic fallback (no API key) ────────────────────────────────────
-    parsed = await parse_text_input_async(text)
-
-    if parsed.intent == "budget_create":
-        return await handle_budget_message(user.user_id, text, parsed)
-    if parsed.intent == "constraint_create":
-        return handle_constraint_message(user.user_id, text, parsed)
-    if parsed.intent == "inventory_query":
-        return inventory_question(user.user_id)
-
-    if parsed.intent == "unknown" or not parsed.items:
-        inventory_rows = inventory_service.query_inventory(user.user_id)
-        budget_statuses = budget_service.get_budget_statuses(user.user_id)
-        inv_summary = ", ".join(f"{r.current_quantity} {r.item_normalized}" for r in inventory_rows[:10])
-        budget_summary = "; ".join(
-            f"{s.budget_scope} ${s.amount_remaining:.2f} left" for s in budget_statuses
-        )
-        fallback_reply = await generate_dragon_reply(text, inv_summary, budget_summary, "", "")
-        if not fallback_reply:
-            fallback_reply = conversational_fallback(text)
-        return ChatResponse(reply=fallback_reply, inventory=inventory_rows, budgets=budget_statuses)
-
-    evaluation: PurchaseEvaluation | None = (
-        budget_service.evaluate_purchase(user.user_id, parsed.items)
-        if parsed.intent == "purchase"
-        else None
-    )
-    events = inventory_service.log_items(user, parsed, input_source=payload.input_source)
-    inventory_rows = inventory_service.query_inventory(user.user_id)
-    budget_statuses = budget_service.get_budget_statuses(user.user_id)
-    constraint_alerts = evaluation.constraint_alerts if evaluation else []
-    velocity_notes = inventory_service.velocity_notes(user.user_id, events)
-
-    inv_summary = ", ".join(f"{r.current_quantity} {r.item_normalized}" for r in inventory_rows[:10])
-    budget_summary = "; ".join(
-        f"{s.budget_scope} ${s.amount_remaining:.2f} left (${s.daily_pace:.2f}/day, {s.days_remaining}d)"
-        for s in budget_statuses
-    )
-    alert_summary = " ".join(a.message for a in constraint_alerts)
-    vel_summary = " ".join(velocity_notes)
-
-    fallback_reply = await generate_dragon_reply(text, inv_summary, budget_summary, alert_summary, vel_summary)
-    if not fallback_reply:
-        fallback_reply = build_dragon_reply(inventory_rows, budget_statuses, constraint_alerts, velocity_notes, intent=parsed.intent)
-
+    # Gemini now acts as a JSON extraction layer only. Python validates the
+    # intent, executes all database work, computes decisions, then optionally
+    # asks Gemini to phrase the final advice from compact backend facts.
+    extracted_intent = await intent_service.extract(text)
+    result = await action_router.handle(user, extracted_intent, input_source=payload.input_source)
     return ChatResponse(
-        reply=fallback_reply,
-        parsed=parsed,
-        events=events,
-        inventory=inventory_rows,
-        budgets=budget_statuses,
-        constraints=constraint_alerts,
+        reply=result.reply,
+        intent=result.intent.model_dump(mode="json"),
+        decision_band=result.decision_band,
+        events=result.events,
+        inventory=result.inventory,
+        budgets=result.budgets,
+        constraints=result.constraints,
     )
 
 

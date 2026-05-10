@@ -264,6 +264,8 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    intent: dict[str, Any] | None = None
+    decision_band: str | None = None
     parsed: ParsedInput | None = None
     events: list[Event] = Field(default_factory=list)
     inventory: list[InventoryRow] = Field(default_factory=list)

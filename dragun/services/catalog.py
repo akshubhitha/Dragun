@@ -24,7 +24,7 @@ CATALOG: dict[str, CatalogEntry] = {
     "jeans": CatalogEntry("jeans", ("clothing",), "durable"),
     "shoe": CatalogEntry("shoes", ("clothing",), "durable"),
     "shoes": CatalogEntry("shoes", ("clothing",), "durable"),
-    "coffee": CatalogEntry("coffee", ("food", "drink"), "consumable"),
+    "coffee": CatalogEntry("coffee", ("coffee", "dining", "food"), "consumable"),
     "groceries": CatalogEntry("groceries", ("food", "essentials"), "consumable"),
     "milk": CatalogEntry("milk", ("food", "essentials"), "consumable"),
     "eggs": CatalogEntry("eggs", ("food", "essentials"), "consumable"),

@@ -12,12 +12,19 @@ Built for the [Google Cloud Rapid Agent Hackathon](https://rapid-agent.devpost.c
 
 ## How it works
 
-- **Gemini 2.5 Flash** drives the entire conversation via function calling — no regex routing, no templates
+- **Gemini 2.5 Flash** turns messy user input into strict JSON intents, then Python performs the backend work
 - **Firestore** stores an immutable event log; inventory and budget views are derived from events
 - **Arize Phoenix** traces every Gemini call for observability (latency, token counts, tool usage)
 - **Google Cloud Run** hosts the app at [mydragun.com](https://mydragun.com)
 
-The agent decides which tools to call based on what you say:
+Dragun now uses a thin-agent / fat-backend loop:
+
+1. User text or browser voice transcript comes in.
+2. Gemini extracts a compact JSON intent, or the deterministic parser falls back.
+3. Python validates the intent, routes it to backend handlers, queries Firestore, and computes budget/advice bands.
+4. Gemini may phrase the final response from compact backend facts only.
+
+Examples:
 
 | What you say | What Dragun does |
 |---|---|
@@ -32,7 +39,7 @@ The agent decides which tools to call based on what you say:
 
 ## Stack
 
-- **Agent**: `google-genai` SDK with Gemini 2.5 Flash function calling
+- **Agent**: `google-genai` SDK with Gemini 2.5 Flash JSON extraction + advice phrasing
 - **Observability**: Arize Phoenix (`arize-phoenix-otel` + `openinference-instrumentation-google-genai`)
 - **Storage**: Google Cloud Firestore (Native mode)
 - **API**: FastAPI + Uvicorn
