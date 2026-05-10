@@ -4,11 +4,14 @@ import hashlib
 import hmac
 import logging
 import os
+import random
 import re
-from datetime import UTC, datetime
+import string
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -51,8 +54,10 @@ from dragun.models import (
     PeriodType,
     PurchaseEvaluation,
     RegisterRequest,
+    SendOTPRequest,
     User,
     UserPublic,
+    VerifyOTPRequest,
 )
 from dragun.services.budget import BudgetService
 from dragun.services.inventory import InventoryService
@@ -93,6 +98,160 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 def get_repo() -> DragunRepository:
     return repository
+
+
+# ── OTP store ──────────────────────────────────────────────────────────────────
+# { email: { "code": str, "expires_at": datetime, "username": str|None } }
+_otp_store: dict[str, dict] = {}
+_OTP_TTL_MINUTES = 10
+
+
+def _generate_otp() -> str:
+    return "".join(random.choices(string.digits, k=6))
+
+
+def _purge_expired_otps() -> None:
+    now = datetime.now(UTC)
+    expired = [email for email, entry in _otp_store.items() if entry["expires_at"] < now]
+    for email in expired:
+        del _otp_store[email]
+
+
+async def _send_otp_email(to_email: str, code: str, username: str | None, is_new: bool) -> bool:
+    """Send OTP via Resend API. Returns True on success."""
+    api_key = settings.resend_api_key
+    if not api_key:
+        # Dev mode — log the code so you can manually share it
+        logger.warning("RESEND_API_KEY not set. OTP for %s → %s (expires in %d min)", to_email, code, _OTP_TTL_MINUTES)
+        return False
+
+    greeting = f"Hey {username}," if username else "Hey,"
+    action_text = "create your Dragun account" if is_new else "sign back in to Dragun"
+    html_body = f"""
+    <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:40px 24px;">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;margin-bottom:6px;">
+        dra<span style="color:#00c9a7;">gun</span>
+      </div>
+      <p style="color:#6b7a8d;font-size:13px;margin-top:0;margin-bottom:32px;">
+        Your dragon knows every coin in the hoard.
+      </p>
+      <p style="font-size:15px;color:#1a2332;">{greeting}</p>
+      <p style="font-size:15px;color:#1a2332;">
+        Here's your code to {action_text}:
+      </p>
+      <div style="background:#f0f2f5;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+        <div style="font-size:40px;font-weight:800;letter-spacing:8px;color:#0f1923;font-variant-numeric:tabular-nums;">
+          {code}
+        </div>
+        <div style="font-size:12px;color:#6b7a8d;margin-top:8px;">
+          Expires in {_OTP_TTL_MINUTES} minutes
+        </div>
+      </div>
+      <p style="font-size:13px;color:#6b7a8d;">
+        If you didn't request this, you can safely ignore this email.
+      </p>
+    </div>
+    """
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": settings.email_from,
+                    "to": [to_email],
+                    "subject": f"Your Dragun code: {code}",
+                    "html": html_body,
+                },
+            )
+        if resp.status_code not in (200, 201):
+            logger.error("Resend API error %s: %s", resp.status_code, resp.text)
+            return False
+        return True
+    except Exception:
+        logger.error("Failed to send OTP email to %s", to_email, exc_info=True)
+        return False
+
+
+@app.post("/api/auth/send-otp")
+async def send_otp(request: SendOTPRequest, repo: DragunRepository = Depends(get_repo)) -> dict:
+    """Step 1 of passwordless auth: send a 6-digit OTP to the given email."""
+    email = request.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+
+    _purge_expired_otps()
+    existing_user = repo.get_user_by_email(email)
+    is_new = existing_user is None
+
+    if is_new and not request.username:
+        raise HTTPException(
+            status_code=400,
+            detail="Username is required for new accounts. Enter a username to claim your hoard.",
+        )
+
+    if is_new:
+        # Make sure the username isn't already taken
+        username = request.username.strip().lower()
+        if repo.get_user_by_handle(username):
+            raise HTTPException(status_code=409, detail="That username is already guarding a hoard. Choose another.")
+    else:
+        username = existing_user.handle
+
+    code = _generate_otp()
+    _otp_store[email] = {
+        "code": code,
+        "expires_at": datetime.now(UTC) + timedelta(minutes=_OTP_TTL_MINUTES),
+        "username": request.username.strip() if request.username else None,
+        "is_new": is_new,
+    }
+
+    sent = await _send_otp_email(email, code, username, is_new)
+    if not sent and settings.resend_api_key:
+        raise HTTPException(status_code=500, detail="Failed to send code. Try again in a moment.")
+
+    return {"status": "otp_sent", "is_new_user": is_new, "email": email}
+
+
+@app.post("/api/auth/verify-otp", response_model=UserPublic)
+async def verify_otp(request: VerifyOTPRequest, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
+    """Step 2 of passwordless auth: verify the OTP and return (or create) the user."""
+    email = request.email.strip().lower()
+    entry = _otp_store.get(email)
+
+    if not entry:
+        raise HTTPException(status_code=400, detail="No code found for this email. Request a new one.")
+    if datetime.now(UTC) > entry["expires_at"]:
+        del _otp_store[email]
+        raise HTTPException(status_code=400, detail="That code expired. Request a new one.")
+    if entry["code"] != request.code.strip():
+        raise HTTPException(status_code=400, detail="Wrong code. Check your email and try again.")
+
+    # Code is valid — consume it
+    del _otp_store[email]
+
+    existing_user = repo.get_user_by_email(email)
+    if existing_user:
+        return UserPublic.from_user(existing_user)
+
+    # New user — create account
+    username = (entry.get("username") or "").strip().lower()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username missing. Please start over.")
+
+    user = User(
+        user_id=str(uuid4()),
+        handle=username,
+        email=email,
+        currency="USD",
+        created_at=datetime.now(UTC),
+    )
+    repo.create_user(user)
+    return UserPublic.from_user(user)
 
 
 @app.get("/")

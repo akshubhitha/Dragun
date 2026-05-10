@@ -12,8 +12,15 @@
 
 set -euo pipefail
 
-PROJECT_ID="${1:-}"
-GEMINI_API_KEY="${2:-}"
+# Load .env if it exists (provides defaults for all args)
+if [[ -f "$(dirname "$0")/.env" ]]; then
+  set -a
+  source "$(dirname "$0")/.env"
+  set +a
+fi
+
+PROJECT_ID="${1:-${GCP_PROJECT_ID:-}}"
+GEMINI_API_KEY="${2:-${GOOGLE_API_KEY:-}}"
 
 # PASSKEY_SALT must never change after first deploy — it's the key that hashes all passwords.
 # If a third arg is given, use it. Otherwise try to read the existing value from Cloud Run.
@@ -24,7 +31,10 @@ else
   EXISTING_SALT=$(gcloud run services describe dragun --region us-central1 \
     --format "value(spec.template.spec.containers[0].env)" 2>/dev/null \
     | tr ',' '\n' | grep DRAGUN_PASSKEY_SALT | cut -d= -f2 || true)
-  if [[ -n "$EXISTING_SALT" ]]; then
+  if [[ -n "${DRAGUN_PASSKEY_SALT:-}" ]]; then
+    PASSKEY_SALT="$DRAGUN_PASSKEY_SALT"
+    echo "ℹ️  Using PASSKEY_SALT from .env"
+  elif [[ -n "$EXISTING_SALT" ]]; then
     PASSKEY_SALT="$EXISTING_SALT"
     echo "ℹ️  Reusing existing PASSKEY_SALT from Cloud Run (logins preserved)"
   else
@@ -114,7 +124,9 @@ ADK_MODEL=gemini-2.5-flash,\
 GOOGLE_API_KEY=$GEMINI_API_KEY,\
 DRAGUN_PASSKEY_SALT=$PASSKEY_SALT,\
 CORS_ORIGINS=[\"*\"],\
-ARIZE_API_KEY=${4:-}" \
+ARIZE_API_KEY=${4:-${ARIZE_API_KEY:-}},\
+RESEND_API_KEY=${RESEND_API_KEY:-},\
+EMAIL_FROM=${EMAIL_FROM:-support@mydragun.com}" \
   --quiet
 
 # ── 7. Print URL ─────────────────────────────────────────────────────────────

@@ -35,6 +35,17 @@ class FirestoreRepository(DragunRepository):
             return User(**doc.to_dict())
         return None
 
+    def get_user_by_email(self, email: str) -> User | None:
+        docs = (
+            self.client.collection("users")
+            .where(filter=firestore.FieldFilter("email", "==", email.strip().lower()))
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            return User(**doc.to_dict())
+        return None
+
     def get_user(self, user_id: str) -> User | None:
         doc = self.client.collection("users").document(user_id).get()
         return User(**doc.to_dict()) if doc.exists else None

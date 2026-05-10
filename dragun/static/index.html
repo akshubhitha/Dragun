@@ -37,9 +37,6 @@
     .login-logo-text { font-size:22px; font-weight:800; letter-spacing:-.5px; color:var(--text); }
     .login-logo-text span { color:var(--accent); }
     .login-tagline { color:var(--muted); font-size:13px; margin-bottom:32px; }
-    .tab-row { display:flex; border-bottom:2px solid var(--border); margin-bottom:28px; }
-    .tab-btn { flex:1; padding:10px 0; background:none; border:none; cursor:pointer; font:600 13px/1 inherit; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-2px; transition:color .15s,border-color .15s; }
-    .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
     .form-group { margin-bottom:16px; }
     .form-group label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em; }
     .form-group input { width:100%; padding:11px 14px; border:1.5px solid var(--border); border-radius:8px; font:inherit; font-size:14px; color:var(--text); background:#fafbfc; transition:border-color .15s,box-shadow .15s; outline:none; }
@@ -48,7 +45,18 @@
     .btn-primary { width:100%; padding:13px; background:var(--accent); border:none; border-radius:8px; font:700 15px/1 inherit; color:#fff; cursor:pointer; transition:background .15s,transform .08s; }
     .btn-primary:hover { background:var(--accent-dim); }
     .btn-primary:active { transform:scale(.98); }
+    .btn-primary:disabled { background:#b0b8c4; cursor:not-allowed; }
     .login-error { color:var(--red); font-size:12px; margin-top:12px; text-align:center; min-height:16px; }
+    /* OTP step */
+    .auth-sent-to { font-size:13px; color:var(--muted); margin-bottom:24px; text-align:center; line-height:1.5; }
+    .otp-inputs { display:flex; gap:8px; margin-bottom:24px; justify-content:center; }
+    .otp-box { width:44px; height:52px; border:1.5px solid var(--border); border-radius:8px; font:600 24px/1 inherit; text-align:center; color:var(--text); background:#fafbfc; transition:border-color .15s,box-shadow .15s; outline:none; -moz-appearance:textfield; }
+    .otp-box::-webkit-inner-spin-button,.otp-box::-webkit-outer-spin-button { -webkit-appearance:none; }
+    .otp-box:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,201,167,.12); background:#fff; }
+    .auth-footer-links { display:flex; justify-content:space-between; margin-top:16px; }
+    .auth-link-btn { background:none; border:none; color:var(--muted); font:12px/1 inherit; cursor:pointer; padding:4px 0; transition:color .12s; }
+    .auth-link-btn:hover { color:var(--accent); }
+    .username-hint { font-size:11px; color:var(--muted); margin-top:4px; }
 
     /* ── App Shell ─────────────────────────────────────────── */
     #app { display:none; height:100vh; flex-direction:row; }
@@ -180,22 +188,36 @@
     </div>
     <p class="login-tagline">Your dragon knows every coin in the hoard.</p>
 
-    <div class="tab-row">
-      <button class="tab-btn active" data-tab="signin">Sign In</button>
-      <button class="tab-btn" data-tab="register">Create Account</button>
+    <!-- Step 1: Email + Username -->
+    <div id="auth-step-1">
+      <div class="form-group">
+        <label>Email</label>
+        <input id="auth-email" type="email" placeholder="you@example.com" autocomplete="email"/>
+      </div>
+      <div class="form-group" id="username-group">
+        <label>Username <span style="color:var(--muted);font-weight:400;text-transform:none;">(new accounts)</span></label>
+        <input id="auth-username" placeholder="ember" autocomplete="username"/>
+        <div class="username-hint">Returning user? Leave this blank.</div>
+      </div>
+      <button class="btn-primary" id="send-otp-btn">Send Code →</button>
     </div>
 
-    <div id="tab-signin">
-      <div class="form-group"><label>Handle</label><input id="si-handle" placeholder="ember" autocomplete="username"/></div>
-      <div class="form-group"><label>Passkey</label><input id="si-passkey" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
-      <button class="btn-primary" id="signin-btn">Sign In →</button>
-    </div>
-
-    <div id="tab-register" class="hidden">
-      <div class="form-group"><label>Handle</label><input id="reg-handle" placeholder="ember" autocomplete="username"/></div>
-      <div class="form-group"><label>Passkey</label><input id="reg-passkey" type="password" placeholder="Create a passkey" autocomplete="new-password"/></div>
-      <div class="form-group"><label>Zip Code</label><input id="reg-zip" placeholder="10001" maxlength="5"/></div>
-      <button class="btn-primary" id="register-btn">Create Account →</button>
+    <!-- Step 2: OTP entry -->
+    <div id="auth-step-2" class="hidden">
+      <p class="auth-sent-to">We emailed a 6-digit code to<br/><strong id="otp-email-display"></strong></p>
+      <div class="otp-inputs">
+        <input class="otp-box" type="tel" maxlength="1" inputmode="numeric"/>
+        <input class="otp-box" type="tel" maxlength="1" inputmode="numeric"/>
+        <input class="otp-box" type="tel" maxlength="1" inputmode="numeric"/>
+        <input class="otp-box" type="tel" maxlength="1" inputmode="numeric"/>
+        <input class="otp-box" type="tel" maxlength="1" inputmode="numeric"/>
+        <input class="otp-box" type="tel" maxlength="1" inputmode="numeric"/>
+      </div>
+      <button class="btn-primary" id="verify-otp-btn">Verify →</button>
+      <div class="auth-footer-links">
+        <button class="auth-link-btn" id="back-btn">← Change email</button>
+        <button class="auth-link-btn" id="resend-btn">Resend code</button>
+      </div>
     </div>
 
     <div id="login-error" class="login-error"></div>
@@ -396,51 +418,114 @@ async function api(path, opts={}) {
   return b;
 }
 
-/* ════ LOGIN ════ */
+/* ════ LOGIN / OTP ════ */
 const $login = document.getElementById("login-screen");
 const $app   = document.getElementById("app");
 const $err   = document.getElementById("login-error");
+let _pendingEmail = "";
 
-document.querySelectorAll(".tab-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById("tab-signin").classList.toggle("hidden", btn.dataset.tab !== "signin");
-    document.getElementById("tab-register").classList.toggle("hidden", btn.dataset.tab !== "register");
-    $err.textContent = "";
+// ── OTP digit boxes ──
+const otpBoxes = [...document.querySelectorAll(".otp-box")];
+otpBoxes.forEach((box, i) => {
+  box.addEventListener("input", () => {
+    // Only keep last typed digit
+    box.value = box.value.replace(/\D/g,"").slice(-1);
+    if (box.value && i < otpBoxes.length - 1) otpBoxes[i + 1].focus();
+    if (getOTPCode().length === 6) document.getElementById("verify-otp-btn").click();
+  });
+  box.addEventListener("keydown", e => {
+    if (e.key === "Backspace" && !box.value && i > 0) { otpBoxes[i - 1].focus(); otpBoxes[i - 1].select(); }
+    if (e.key === "Enter") document.getElementById("verify-otp-btn").click();
+  });
+  box.addEventListener("paste", e => {
+    const text = (e.clipboardData || window.clipboardData).getData("text").replace(/\D/g,"").slice(0,6);
+    if (text) {
+      [...text].forEach((ch, j) => { if (otpBoxes[j]) otpBoxes[j].value = ch; });
+      otpBoxes[Math.min(text.length, otpBoxes.length - 1)].focus();
+      e.preventDefault();
+      if (text.length === 6) setTimeout(() => document.getElementById("verify-otp-btn").click(), 50);
+    }
   });
 });
 
-document.getElementById("signin-btn").addEventListener("click", async () => {
-  const handle = document.getElementById("si-handle").value.trim();
-  const passkey = document.getElementById("si-passkey").value;
-  if (!handle || !passkey) { $err.textContent = "Enter handle and passkey."; return; }
+function getOTPCode() { return otpBoxes.map(b => b.value).join(""); }
+function clearOTPBoxes() { otpBoxes.forEach(b => b.value = ""); }
+
+// ── Step 1: Send OTP ──
+document.getElementById("send-otp-btn").addEventListener("click", async () => {
+  const email = document.getElementById("auth-email").value.trim();
+  const username = document.getElementById("auth-username").value.trim();
+  if (!email) { $err.textContent = "Enter your email address."; return; }
   $err.textContent = "";
+  const btn = document.getElementById("send-otp-btn");
+  btn.disabled = true; btn.textContent = "Sending…";
   try {
-    const user = await api("/api/login", {
+    await api("/api/auth/send-otp", {
       method: "POST",
-      body: JSON.stringify({ handle, passkey }),
+      body: JSON.stringify({ email, username: username || null }),
+    });
+    _pendingEmail = email;
+    document.getElementById("otp-email-display").textContent = email;
+    document.getElementById("auth-step-1").classList.add("hidden");
+    document.getElementById("auth-step-2").classList.remove("hidden");
+    clearOTPBoxes();
+    otpBoxes[0].focus();
+  } catch(e) {
+    $err.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = "Send Code →";
+  }
+});
+
+document.getElementById("auth-email").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("send-otp-btn").click();
+});
+document.getElementById("auth-username").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("send-otp-btn").click();
+});
+
+// ── Step 2: Verify OTP ──
+document.getElementById("verify-otp-btn").addEventListener("click", async () => {
+  const code = getOTPCode();
+  if (code.length < 6) { $err.textContent = "Enter the full 6-digit code."; return; }
+  $err.textContent = "";
+  const btn = document.getElementById("verify-otp-btn");
+  btn.disabled = true; btn.textContent = "Verifying…";
+  try {
+    const user = await api("/api/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ email: _pendingEmail, code }),
     });
     loginSuccess(user);
-  } catch(e) { $err.textContent = e.message; }
+  } catch(e) {
+    $err.textContent = e.message;
+    clearOTPBoxes(); otpBoxes[0].focus();
+    btn.disabled = false; btn.textContent = "Verify →";
+  }
 });
 
-document.getElementById("register-btn").addEventListener("click", async () => {
-  const handle = document.getElementById("reg-handle").value.trim();
-  const passkey = document.getElementById("reg-passkey").value;
-  const zip = document.getElementById("reg-zip").value.trim();
-  if (!handle||!passkey||!zip) { $err.textContent = "Fill in all fields."; return; }
-  if (passkey.length < 8) { $err.textContent = "Passkey must be at least 8 characters."; return; }
-  if (!/^\d{5}$/.test(zip)) { $err.textContent = "Zip must be 5 digits."; return; }
+// ── Back / Resend ──
+document.getElementById("back-btn").addEventListener("click", () => {
+  document.getElementById("auth-step-2").classList.add("hidden");
+  document.getElementById("auth-step-1").classList.remove("hidden");
   $err.textContent = "";
-  try {
-    const user = await api("/api/register",{method:"POST",body:JSON.stringify({handle,passkey,zip_code:zip})});
-    loginSuccess(user);
-  } catch(e) { $err.textContent = e.message; }
 });
 
-["si-handle","si-passkey"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if(e.key==="Enter") document.getElementById("signin-btn").click(); }));
-["reg-handle","reg-passkey","reg-zip"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if(e.key==="Enter") document.getElementById("register-btn").click(); }));
+document.getElementById("resend-btn").addEventListener("click", async () => {
+  const email = document.getElementById("auth-email").value.trim();
+  const username = document.getElementById("auth-username").value.trim();
+  const btn = document.getElementById("resend-btn");
+  btn.textContent = "Sending…";
+  try {
+    await api("/api/auth/send-otp", { method:"POST", body:JSON.stringify({email, username: username||null}) });
+    clearOTPBoxes(); otpBoxes[0].focus();
+    btn.textContent = "Sent ✓";
+    setTimeout(() => { btn.textContent = "Resend code"; }, 3000);
+  } catch(e) {
+    $err.textContent = e.message;
+    btn.textContent = "Resend code";
+  }
+});
 
 function loginSuccess(user) {
   state.userId = user.user_id; state.handle = user.handle;

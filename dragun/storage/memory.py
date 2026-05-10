@@ -24,6 +24,7 @@ class InMemoryRepository(DragunRepository):
         self._lock = RLock()
         self.users: dict[str, User] = {}
         self.users_by_handle: dict[str, str] = {}
+        self.users_by_email: dict[str, str] = {}
         self.events: dict[str, Event] = {}
         self.tags: dict[str, Tag] = {}
         self.tags_by_name: dict[str, str] = {}
@@ -38,11 +39,18 @@ class InMemoryRepository(DragunRepository):
                 raise ValueError("That handle is already guarding a hoard.")
             self.users[user.user_id] = deepcopy(user)
             self.users_by_handle[normalized] = user.user_id
+            if user.email:
+                self.users_by_email[user.email.strip().lower()] = user.user_id
             return deepcopy(user)
 
     def get_user_by_handle(self, handle: str) -> User | None:
         with self._lock:
             user_id = self.users_by_handle.get(handle.strip().lower())
+            return deepcopy(self.users.get(user_id)) if user_id else None
+
+    def get_user_by_email(self, email: str) -> User | None:
+        with self._lock:
+            user_id = self.users_by_email.get(email.strip().lower())
             return deepcopy(self.users.get(user_id)) if user_id else None
 
     def get_user(self, user_id: str) -> User | None:
@@ -177,6 +185,8 @@ class InMemoryRepository(DragunRepository):
             user = self.users.pop(user_id, None)
             if user:
                 self.users_by_handle.pop(user.handle, None)
+                if user.email:
+                    self.users_by_email.pop(user.email.strip().lower(), None)
             event_ids = [
                 event_id for event_id, event in self.events.items() if event.user_id == user_id
             ]

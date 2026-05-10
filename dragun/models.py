@@ -62,8 +62,9 @@ class ConstraintOperator(StrEnum):
 class User(BaseModel):
     user_id: str = Field(default_factory=lambda: str(uuid4()))
     handle: str
-    passkey_hash: str
-    zip_code: str
+    passkey_hash: str = ""  # kept for backward compat; not used in OTP auth
+    email: str | None = None
+    zip_code: str = ""
     currency: str = "USD"
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -71,14 +72,6 @@ class User(BaseModel):
     @classmethod
     def normalize_handle(cls, value: str) -> str:
         return value.strip().lower()
-
-    @field_validator("zip_code")
-    @classmethod
-    def validate_zip(cls, value: str) -> str:
-        cleaned = value.strip()
-        if len(cleaned) != 5 or not cleaned.isdigit():
-            raise ValueError("zip_code must be 5 digits")
-        return cleaned
 
 
 class FamilyMember(BaseModel):
@@ -221,7 +214,7 @@ class UserPublic(BaseModel):
     """Safe user representation — passkey_hash is never included."""
     user_id: str
     handle: str
-    zip_code: str
+    email: str | None = None
     currency: str
     created_at: datetime
 
@@ -230,7 +223,7 @@ class UserPublic(BaseModel):
         return cls(
             user_id=user.user_id,
             handle=user.handle,
-            zip_code=user.zip_code,
+            email=user.email,
             currency=user.currency,
             created_at=user.created_at,
         )
@@ -239,12 +232,22 @@ class UserPublic(BaseModel):
 class RegisterRequest(BaseModel):
     handle: str
     passkey: str = Field(min_length=8)
-    zip_code: str
+    zip_code: str = ""
 
 
 class LoginRequest(BaseModel):
     handle: str
     passkey: str
+
+
+class SendOTPRequest(BaseModel):
+    email: str
+    username: str | None = None  # required for new users; ignored for returning users
+
+
+class VerifyOTPRequest(BaseModel):
+    email: str
+    code: str
 
 
 class ChatRequest(BaseModel):

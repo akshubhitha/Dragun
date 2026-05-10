@@ -19,6 +19,10 @@ class DragunRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_user_by_email(self, email: str) -> User | None:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_user(self, user_id: str) -> User | None:
         raise NotImplementedError
 
