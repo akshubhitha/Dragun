@@ -106,6 +106,7 @@ def compute_inventory(
                 "quantity": 0,
                 "lifespan_type": event.lifespan_type,
                 "costs": [],
+                "price_override": None,
                 "last_purchased": None,
                 "first_seen": event.event_timestamp,
             },
@@ -113,7 +114,10 @@ def compute_inventory(
         entry["tags"].update(tags_by_event.get(event.event_id, []))
         entry["first_seen"] = min(entry["first_seen"], event.event_timestamp)
         entry["lifespan_type"] = event.lifespan_type
-        if event.unit_cost is not None:
+        # quantity=0 with a unit_cost = explicit price override (last one wins)
+        if event.quantity == 0 and event.unit_cost is not None:
+            entry["price_override"] = event.unit_cost
+        elif event.unit_cost is not None:
             entry["costs"].append(event.unit_cost)
         if event.event_type in ADDITIVE_EVENT_TYPES:
             entry["quantity"] += event.quantity
@@ -124,7 +128,9 @@ def compute_inventory(
 
     inventory: list[InventoryRow] = []
     for entry in grouped.values():
+        price_override = entry.get("price_override")
         costs = entry["costs"]
+        avg_cost = price_override if price_override is not None else (round(sum(costs) / len(costs), 2) if costs else None)
         inventory.append(
             InventoryRow(
                 user_id=entry["user_id"],
@@ -133,7 +139,7 @@ def compute_inventory(
                 tags=sorted(entry["tags"]),
                 current_quantity=entry["quantity"],
                 lifespan_type=entry["lifespan_type"],
-                avg_unit_cost=round(sum(costs) / len(costs), 2) if costs else None,
+                avg_unit_cost=avg_cost,
                 last_purchased=entry["last_purchased"],
                 first_seen=entry["first_seen"],
             )

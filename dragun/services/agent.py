@@ -59,6 +59,8 @@ Your job:
 - When the user corrects a mistake or says "I actually have X" or "change it to X" → call correct_inventory
 - When the user says an item has the wrong tag/category or asks to change its category → call retag_item
 - When the user says they got rid of, donated, sold, returned, lost, or threw away something → call remove_items
+- When the user says an item costs X, or wants to update/set/correct a price → call update_item_cost
+- IMPORTANT: items_text must contain ONLY item names and quantities — never the user's full sentence or instructions
 - For casual chat or questions → just reply, no tool needed
 
 Always correct spelling in tool arguments — if the user says "shrt", pass "shirt"; "pant" for "pnts"; "shoes" for "shoees", etc. Normalize before calling any tool.
@@ -98,6 +100,9 @@ def _tool_declarations() -> list[types.Tool]:
     def remove_items(items_text: str, reason: str = "discard") -> None:
         """Log removal of items from the hoard. Use when the user says they got rid of, donated, returned, lost,
         sold, or threw away items. items_text is like '2 shirts, 1 pair of jeans'. reason is 'discard', 'return', or 'consumed'."""
+    def update_item_cost(item: str, unit_cost: float) -> None:
+        """Set or correct the average unit cost of an item. Use when the user says an item costs X,
+        or wants to update the price of something they own. unit_cost is the price per single item in dollars."""
 
     return [types.Tool(function_declarations=[
         _fn_to_declaration(log_purchase),
@@ -109,6 +114,7 @@ def _tool_declarations() -> list[types.Tool]:
         _fn_to_declaration(correct_inventory),
         _fn_to_declaration(retag_item),
         _fn_to_declaration(remove_items),
+        _fn_to_declaration(update_item_cost),
     ])]
 
 
@@ -341,6 +347,42 @@ def _make_tools(
             ],
         }
 
+    def update_item_cost(item: str, unit_cost: float) -> dict[str, Any]:
+        """Set or correct the average unit cost of an item."""
+        try:
+            item_normalized = item.lower().rstrip("s") if not item.lower().endswith("ss") else item.lower()
+            rows = inventory_service.query_inventory(user.user_id)
+            matched = next((r.item_normalized for r in rows if r.item_normalized == item_normalized), None)
+            if not matched:
+                matched = next((r.item_normalized for r in rows if item_normalized in r.item_normalized), None)
+            if not matched:
+                return {"status": "error", "message": f"Item '{item}' not found in inventory."}
+            # Log a price-override event (quantity=0, unit_cost=override value)
+            from dragun.services.catalog import suggest_tags, infer_lifespan_type
+            event = Event(
+                event_id=str(uuid4()),
+                user_id=user.user_id,
+                event_type=EventType.MANUAL_INVENTORY,
+                item_description=matched,
+                item_normalized=matched,
+                quantity=0,
+                unit_cost=float(unit_cost),
+                total_cost=None,
+                lifespan_type=infer_lifespan_type(matched),
+                input_source="correction",
+                raw_input=f"price update: {matched} = ${unit_cost}",
+                event_timestamp=datetime.now(UTC),
+                created_at=datetime.now(UTC),
+            )
+            inventory_service.repository.create_event(event, suggest_tags(matched))
+            return {
+                "status": "cost_updated",
+                "item": matched,
+                "new_unit_cost": unit_cost,
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def retag_item(item: str, tags: str) -> dict[str, Any]:
         """Change the category tags on an inventory item. tags is a comma-separated list like 'clothing' or 'clothing,essentials'.
         Use when the user says an item is tagged wrong or asks to change its category."""
@@ -385,6 +427,7 @@ def _make_tools(
         "correct_inventory": correct_inventory,
         "retag_item": retag_item,
         "remove_items": remove_items,
+        "update_item_cost": update_item_cost,
     }
 
 
