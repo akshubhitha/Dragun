@@ -1,82 +1,99 @@
-# Dragun
+# 🐉 Dragun
 
-Dragun is a Phase 1 Google Cloud ADK Python agent for item-level consumption
-intelligence. It keeps an immutable Firestore event log, derives inventory and
-budget views from events, and responds through a concise dragon persona.
+**Personal consumption intelligence — powered by Gemini 2.5 Flash, Google Cloud Run, and Arize Phoenix.**
 
-## What is included
+> Try it live: **[mydragun.com](https://mydragun.com)**
 
-- Google Cloud ADK agent graph with the PRD sub-agents:
-  - `dragun_coordinator`
-  - `input_parser`
-  - `inventory_agent`
-  - `budget_agent`
-  - `insight_agent`
-- Gemini Flash model configuration (`gemini-flash-latest` by default)
-- Firestore persistence for users, events, tags, event_tags, budgets, and constraints
-- FastAPI app with a local web chat UI
-- Phase 1 workflows:
-  - handle/passkey/zip registration
-  - text item logging with quantity, cost, lifespan, and inferred tags
-  - inventory computation from the event stream
-  - budget creation and live budget status
-  - inventory cap, hard budget, and pace constraint checks
+Dragun is your personal dragon that guards your hoard. Tell it what you bought, what you own, and what limits you want to set — it tracks everything, surfaces patterns, and keeps you honest without moralizing.
+
+Built for the [Google Cloud Rapid Agent Hackathon](https://rapid-agent.devpost.com/) — Arize track.
+
+---
+
+## How it works
+
+- **Gemini 2.5 Flash** drives the entire conversation via function calling — no regex routing, no templates
+- **Firestore** stores an immutable event log; inventory and budget views are derived from events
+- **Arize Phoenix** traces every Gemini call for observability (latency, token counts, tool usage)
+- **Google Cloud Run** hosts the app at [mydragun.com](https://mydragun.com)
+
+The agent decides which tools to call based on what you say:
+
+| What you say | What Dragun does |
+|---|---|
+| "I bought 3 shirts for $50" | `log_purchase` → updates inventory + budget |
+| "I have 12 shirts already" | `set_inventory_baseline` → sets starting state |
+| "What do I own?" | `get_inventory` → returns full hoard |
+| "Budget $200 for clothing" | `set_budget` → creates monthly budget |
+| "Cap me at 10 shirts" | `set_inventory_cap` → sets guard |
+| "How's my budget?" | `get_budget_status` → shows remaining + pace |
+
+---
+
+## Stack
+
+- **Agent**: `google-genai` SDK with Gemini 2.5 Flash function calling
+- **Observability**: Arize Phoenix (`arize-phoenix-otel` + `openinference-instrumentation-google-genai`)
+- **Storage**: Google Cloud Firestore (Native mode)
+- **API**: FastAPI + Uvicorn
+- **Hosting**: Google Cloud Run (`us-central1`)
+- **License**: MIT
+
+---
 
 ## Local setup
 
 ```bash
+git clone https://github.com/YOUR_USERNAME/dragun.git
+cd dragun_project
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env
+cp .env.example .env   # add your GOOGLE_API_KEY
 uvicorn dragun.app:app --reload
 ```
 
 Open http://localhost:8000.
 
-If `GOOGLE_CLOUD_PROJECT` is unset, Dragun uses in-memory storage for local demos.
-Set `GOOGLE_CLOUD_PROJECT` to use Firestore. For local Firestore emulator usage,
-set `FIRESTORE_EMULATOR_HOST`.
+Without `GOOGLE_API_KEY`, Dragun falls back to a deterministic parser. Without `GOOGLE_CLOUD_PROJECT`, it uses in-memory storage.
 
-## Environment
+---
+
+## Environment variables
 
 ```bash
-GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+DRAGUN_USE_FIRESTORE=true
 FIRESTORE_DATABASE=(default)
-GOOGLE_API_KEY=optional-gemini-api-key
-ADK_MODEL=gemini-flash-latest
-DRAGUN_PASSKEY_SALT=change-me
+ADK_MODEL=gemini-2.5-flash
+GOOGLE_API_KEY=your-gemini-api-key        # from aistudio.google.com
+ARIZE_API_KEY=your-arize-api-key          # from app.phoenix.arize.com
+DRAGUN_PASSKEY_SALT=random-hex-string     # never change after first deploy
+CORS_ORIGINS=["*"]
 ```
 
-The deterministic parser keeps Phase 1 runnable without Gemini credentials; when
-`GOOGLE_API_KEY` is present, the parser first attempts Gemini Flash structured
-parsing and falls back safely.
+---
 
 ## Deploy to Cloud Run
 
 ```bash
-gcloud builds submit --tag gcr.io/$GOOGLE_CLOUD_PROJECT/dragun
-gcloud run deploy dragun \
-  --image gcr.io/$GOOGLE_CLOUD_PROJECT/dragun \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT,ADK_MODEL=gemini-flash-latest
+bash deploy.sh <GCP_PROJECT_ID> <GEMINI_API_KEY> [PASSKEY_SALT] [ARIZE_API_KEY]
 ```
 
-The included `cloudrun.yaml` can also be adapted for service-based deployment.
+The script handles: enabling APIs, Artifact Registry, Firestore setup, Docker build, and Cloud Run deploy in one shot.
 
-## API quick start
+---
+
+## API
 
 ```bash
-curl -X POST http://localhost:8000/api/register \
+# Register
+curl -X POST https://mydragun.com/api/register \
   -H 'content-type: application/json' \
-  -d '{"handle":"ember","passkey":"secret-passkey","zip_code":"12345"}'
+  -d '{"handle":"ember","passkey":"your-passkey","zip_code":"12345"}'
 
-curl -X POST http://localhost:8000/api/chat \
+# Chat
+curl -X POST https://mydragun.com/api/chat \
   -H 'content-type: application/json' \
-  -d '{"user_id":"USER_ID","message":"budget 100 for clothing this month"}'
-
-curl -X POST http://localhost:8000/api/chat \
-  -H 'content-type: application/json' \
-  -d '{"user_id":"USER_ID","message":"3 shirts, 2 dresses, 1 pant - 50 bucks"}'
+  -d '{"user_id":"USER_ID","message":"I bought 3 shirts for $50"}'
 ```
