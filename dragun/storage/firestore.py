@@ -50,6 +50,28 @@ class FirestoreRepository(DragunRepository):
         doc = self.client.collection("users").document(user_id).get()
         return User(**doc.to_dict()) if doc.exists else None
 
+    def update_user_profile(self, user_id: str, **fields) -> User:
+        allowed = {"monthly_income", "fixed_costs_floor", "currency", "zip_code"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if updates:
+            self.client.collection("users").document(user_id).update(updates)
+        user = self.get_user(user_id)
+        if not user:
+            raise ValueError("User not found.")
+        return user
+
+    def update_user_handle(self, user_id: str, new_handle: str) -> User:
+        normalized = new_handle.strip().lower()
+        if self.get_user_by_handle(normalized):
+            existing = self.get_user_by_handle(normalized)
+            if existing and existing.user_id != user_id:
+                raise ValueError("That username is already taken.")
+        self.client.collection("users").document(user_id).update({"handle": normalized})
+        user = self.get_user(user_id)
+        if not user:
+            raise ValueError("User not found.")
+        return user
+
     def create_event(self, event: Event, tag_names: Iterable[str]) -> Event:
         unique_tag_names = dict.fromkeys(tag_name.strip().lower() for tag_name in tag_names if tag_name)
         tags = [self.upsert_tag(tag_name, "agent_inferred") for tag_name in unique_tag_names]
@@ -216,6 +238,18 @@ class FirestoreRepository(DragunRepository):
                 for constraint in self.list_active_constraints(user_id)
             ],
         }
+
+    def anonymize_user(self, user_id: str) -> None:
+        """Strip PII from the user doc; leave all spending data intact as synthetic."""
+        import secrets
+        synth = f"synth_{secrets.token_hex(6)}"
+        self.client.collection("users").document(user_id).update({
+            "handle": synth,
+            "email": None,
+            "passkey_hash": "",
+            "monthly_income": 0.0,
+            "fixed_costs_floor": 0.0,
+        })
 
     def delete_user_data(self, user_id: str) -> None:
         for collection_name, field_name in (

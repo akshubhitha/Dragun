@@ -188,37 +188,22 @@ async def send_otp(request: SendOTPRequest, repo: DragunRepository = Depends(get
     existing_user = repo.get_user_by_email(email)
     is_new = existing_user is None
 
-    if is_new and not request.username:
-        raise HTTPException(
-            status_code=400,
-            detail="Username is required for new accounts. Enter a username to claim your hoard.",
-        )
-
-    if is_new:
-        # Make sure the username isn't already taken
-        username = request.username.strip().lower()
-        if repo.get_user_by_handle(username):
-            raise HTTPException(status_code=409, detail="That username is already guarding a hoard. Choose another.")
-    else:
-        username = existing_user.handle
-
     code = _generate_otp()
     _otp_store[email] = {
         "code": code,
         "expires_at": datetime.now(UTC) + timedelta(minutes=_OTP_TTL_MINUTES),
-        "username": request.username.strip() if request.username else None,
         "is_new": is_new,
     }
 
-    sent = await _send_otp_email(email, code, username, is_new)
+    sent = await _send_otp_email(email, code, None, is_new)
     if not sent and settings.resend_api_key:
         raise HTTPException(status_code=500, detail="Failed to send code. Try again in a moment.")
 
     return {"status": "otp_sent", "is_new_user": is_new, "email": email}
 
 
-@app.post("/api/auth/verify-otp", response_model=UserPublic)
-async def verify_otp(request: VerifyOTPRequest, repo: DragunRepository = Depends(get_repo)) -> UserPublic:
+@app.post("/api/auth/verify-otp")
+async def verify_otp(request: VerifyOTPRequest, repo: DragunRepository = Depends(get_repo)) -> dict:
     """Step 2 of passwordless auth: verify the OTP and return (or create) the user."""
     email = request.email.strip().lower()
     entry = _otp_store.get(email)
@@ -236,27 +221,85 @@ async def verify_otp(request: VerifyOTPRequest, repo: DragunRepository = Depends
 
     existing_user = repo.get_user_by_email(email)
     if existing_user:
-        return UserPublic.from_user(existing_user)
+        pub = UserPublic.from_user(existing_user)
+        return {**pub.model_dump(mode="json"), "is_new_user": False}
 
-    # New user — create account
-    username = (entry.get("username") or "").strip().lower()
-    if not username:
-        raise HTTPException(status_code=400, detail="Username missing. Please start over.")
-
+    # New user — create account with a temp handle; onboarding will set the real one
+    new_id = str(uuid4())
+    temp_handle = f"user_{new_id[:8]}"
     user = User(
-        user_id=str(uuid4()),
-        handle=username,
+        user_id=new_id,
+        handle=temp_handle,
         email=email,
         currency="USD",
         created_at=datetime.now(UTC),
     )
     repo.create_user(user)
-    return UserPublic.from_user(user)
+    pub = UserPublic.from_user(user)
+    return {**pub.model_dump(mode="json"), "is_new_user": True}
+
+
+@app.patch("/api/users/{user_id}/handle")
+def set_user_handle(user_id: str, body: dict, repo: DragunRepository = Depends(get_repo)) -> dict:
+    """Set / change a user's handle. Called from onboarding to claim their chosen username."""
+    handle = (body.get("handle") or "").strip().lower()
+    if not handle:
+        raise HTTPException(status_code=400, detail="Handle cannot be empty.")
+    if len(handle) < 2:
+        raise HTTPException(status_code=400, detail="Username must be at least 2 characters.")
+    if not handle.replace("_", "").replace("-", "").isalnum():
+        raise HTTPException(status_code=400, detail="Username can only contain letters, numbers, hyphens, and underscores.")
+    # Check uniqueness — but allow re-setting the same handle
+    existing = repo.get_user_by_handle(handle)
+    if existing and existing.user_id != user_id:
+        raise HTTPException(status_code=409, detail="That username is already taken. Try another.")
+    try:
+        user = repo.update_user_handle(user_id, handle)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    pub = UserPublic.from_user(user)
+    return pub.model_dump(mode="json")
+
+
+@app.patch("/api/users/{user_id}/profile")
+def update_profile(user_id: str, body: dict, repo: DragunRepository = Depends(get_repo)) -> dict:
+    """Save financial profile fields collected during onboarding."""
+    allowed = {"monthly_income", "fixed_costs_floor"}
+    updates = {k: float(v) for k, v in body.items() if k in allowed and v is not None}
+    try:
+        user = repo.update_user_profile(user_id, **updates)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return UserPublic.from_user(user).model_dump(mode="json")
+
+
+@app.delete("/api/users/{user_id}")
+def delete_account(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict:
+    """Anonymise the user — strips PII but keeps spending data as synthetic records."""
+    user = repo.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    repo.anonymize_user(user_id)
+    return {"status": "anonymized"}
+
+
+@app.get("/api/users/{user_id}/me")
+def get_me(user_id: str, repo: DragunRepository = Depends(get_repo)) -> dict:
+    """Restore a session — returns the user if found, 404 otherwise."""
+    user = repo.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return UserPublic.from_user(user).model_dump(mode="json")
 
 
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/onboarding")
+def onboarding() -> FileResponse:
+    return FileResponse(STATIC_DIR / "onboarding.html")
 
 
 @app.get("/health")

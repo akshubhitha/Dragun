@@ -29,34 +29,61 @@
 
     /* ── Login ─────────────────────────────────────────────── */
     #login-screen {
-      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; min-height: 100dvh;
+      display: flex; align-items: center; justify-content: center;
       background: linear-gradient(135deg, #0f1923 0%, #1a3050 60%, #0f2b3d 100%);
+      padding: 20px;
     }
-    .login-card { background:#fff; border-radius:16px; padding:48px 44px 40px; width:400px; box-shadow:0 24px 64px rgba(0,0,0,.3); }
+    .login-card {
+      background:#fff; border-radius:16px;
+      padding: 40px 36px 36px;
+      width: min(400px, 100%);
+      box-shadow:0 24px 64px rgba(0,0,0,.3);
+    }
     .login-logo { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
     .login-logo-text { font-size:22px; font-weight:800; letter-spacing:-.5px; color:var(--text); }
     .login-logo-text span { color:var(--accent); }
-    .login-tagline { color:var(--muted); font-size:13px; margin-bottom:32px; }
+    .login-tagline { color:var(--muted); font-size:13px; margin-bottom:28px; }
     .form-group { margin-bottom:16px; }
     .form-group label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em; }
-    .form-group input { width:100%; padding:11px 14px; border:1.5px solid var(--border); border-radius:8px; font:inherit; font-size:14px; color:var(--text); background:#fafbfc; transition:border-color .15s,box-shadow .15s; outline:none; }
+    .form-group input {
+      width:100%; padding:13px 15px; border:1.5px solid var(--border);
+      border-radius:10px; font:inherit; font-size:16px; color:var(--text);
+      background:#fafbfc; transition:border-color .15s,box-shadow .15s; outline:none;
+      -webkit-appearance:none; min-height:50px;
+    }
     .form-group input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,201,167,.12); background:#fff; }
     .form-group input::placeholder { color:#b0b8c4; }
-    .btn-primary { width:100%; padding:13px; background:var(--accent); border:none; border-radius:8px; font:700 15px/1 inherit; color:#fff; cursor:pointer; transition:background .15s,transform .08s; }
+    .btn-primary {
+      width:100%; padding:14px; background:var(--accent); border:none;
+      border-radius:10px; font:700 16px/1 inherit; color:#fff;
+      cursor:pointer; transition:background .15s,transform .08s; min-height:52px;
+    }
     .btn-primary:hover { background:var(--accent-dim); }
     .btn-primary:active { transform:scale(.98); }
     .btn-primary:disabled { background:#b0b8c4; cursor:not-allowed; }
-    .login-error { color:var(--red); font-size:12px; margin-top:12px; text-align:center; min-height:16px; }
+    .login-error { color:var(--red); font-size:13px; margin-top:12px; text-align:center; min-height:18px; }
     /* OTP step */
-    .auth-sent-to { font-size:13px; color:var(--muted); margin-bottom:24px; text-align:center; line-height:1.5; }
+    .auth-sent-to { font-size:14px; color:var(--muted); margin-bottom:24px; text-align:center; line-height:1.5; }
     .otp-inputs { display:flex; gap:8px; margin-bottom:24px; justify-content:center; }
-    .otp-box { width:44px; height:52px; border:1.5px solid var(--border); border-radius:8px; font:600 24px/1 inherit; text-align:center; color:var(--text); background:#fafbfc; transition:border-color .15s,box-shadow .15s; outline:none; -moz-appearance:textfield; }
+    .otp-box {
+      width: clamp(40px, 13vw, 52px);
+      height: clamp(48px, 14vw, 60px);
+      border:1.5px solid var(--border); border-radius:10px;
+      font:600 clamp(20px,6vw,28px)/1 inherit;
+      text-align:center; color:var(--text); background:#fafbfc;
+      transition:border-color .15s,box-shadow .15s; outline:none;
+      -moz-appearance:textfield; -webkit-appearance:none;
+    }
     .otp-box::-webkit-inner-spin-button,.otp-box::-webkit-outer-spin-button { -webkit-appearance:none; }
     .otp-box:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,201,167,.12); background:#fff; }
     .auth-footer-links { display:flex; justify-content:space-between; margin-top:16px; }
-    .auth-link-btn { background:none; border:none; color:var(--muted); font:12px/1 inherit; cursor:pointer; padding:4px 0; transition:color .12s; }
+    .auth-link-btn { background:none; border:none; color:var(--muted); font:13px/1 inherit; cursor:pointer; padding:8px 0; transition:color .12s; min-height:44px; display:flex; align-items:center; }
     .auth-link-btn:hover { color:var(--accent); }
-    .username-hint { font-size:11px; color:var(--muted); margin-top:4px; }
+    @media (max-width:440px) {
+      #login-screen { padding:0; align-items:stretch; }
+      .login-card { border-radius:0; width:100%; min-height:100vh; min-height:100dvh; padding:40px 24px max(32px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; justify-content:center; }
+    }
 
     /* ── App Shell ─────────────────────────────────────────── */
     #app { display:none; height:100vh; flex-direction:row; }
@@ -188,16 +215,11 @@
     </div>
     <p class="login-tagline">Your dragon knows every coin in the hoard.</p>
 
-    <!-- Step 1: Email + Username -->
+    <!-- Step 1: Email -->
     <div id="auth-step-1">
       <div class="form-group">
         <label>Email</label>
         <input id="auth-email" type="email" placeholder="you@example.com" autocomplete="email"/>
-      </div>
-      <div class="form-group" id="username-group">
-        <label>Username <span style="color:var(--muted);font-weight:400;text-transform:none;">(new accounts)</span></label>
-        <input id="auth-username" placeholder="ember" autocomplete="username"/>
-        <div class="username-hint">Returning user? Leave this blank.</div>
       </div>
       <button class="btn-primary" id="send-otp-btn">Send Code →</button>
     </div>
@@ -260,6 +282,10 @@
       <button class="logout-btn" id="logout-btn">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/><path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/></svg>
         Sign out
+      </button>
+      <button class="logout-btn" id="delete-account-btn" style="margin-top:8px;color:#e84040;opacity:.6;" title="Delete account">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg>
+        Delete account
       </button>
     </div>
   </nav>
@@ -424,6 +450,38 @@ const $app   = document.getElementById("app");
 const $err   = document.getElementById("login-error");
 let _pendingEmail = "";
 
+// ── Session restore on page load ──
+// Check localStorage first (persists across refreshes), then sessionStorage (set by onboarding)
+(async function() {
+  try {
+    // Onboarding passes user via sessionStorage — move it to localStorage and log in
+    const fromOnboarding = sessionStorage.getItem("dragun_user");
+    if (fromOnboarding) {
+      sessionStorage.removeItem("dragun_user");
+      const user = JSON.parse(fromOnboarding);
+      if (user && user.user_id) {
+        localStorage.setItem("dragun_session", JSON.stringify({ user_id: user.user_id, handle: user.handle }));
+        loginSuccess(user);
+        return;
+      }
+    }
+    // Returning user — verify their stored user_id is still valid
+    const stored = localStorage.getItem("dragun_session");
+    if (stored) {
+      const session = JSON.parse(stored);
+      if (session && session.user_id) {
+        const user = await fetch(`/api/users/${session.user_id}/me`).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (user && user.user_id) {
+          loginSuccess(user);
+          return;
+        }
+        // Server doesn't know this user — clear stale session
+        localStorage.removeItem("dragun_session");
+      }
+    }
+  } catch(e) {}
+})();
+
 // ── OTP digit boxes ──
 const otpBoxes = [...document.querySelectorAll(".otp-box")];
 otpBoxes.forEach((box, i) => {
@@ -454,7 +512,6 @@ function clearOTPBoxes() { otpBoxes.forEach(b => b.value = ""); }
 // ── Step 1: Send OTP ──
 document.getElementById("send-otp-btn").addEventListener("click", async () => {
   const email = document.getElementById("auth-email").value.trim();
-  const username = document.getElementById("auth-username").value.trim();
   if (!email) { $err.textContent = "Enter your email address."; return; }
   $err.textContent = "";
   const btn = document.getElementById("send-otp-btn");
@@ -462,7 +519,7 @@ document.getElementById("send-otp-btn").addEventListener("click", async () => {
   try {
     await api("/api/auth/send-otp", {
       method: "POST",
-      body: JSON.stringify({ email, username: username || null }),
+      body: JSON.stringify({ email }),
     });
     _pendingEmail = email;
     document.getElementById("otp-email-display").textContent = email;
@@ -480,9 +537,6 @@ document.getElementById("send-otp-btn").addEventListener("click", async () => {
 document.getElementById("auth-email").addEventListener("keydown", e => {
   if (e.key === "Enter") document.getElementById("send-otp-btn").click();
 });
-document.getElementById("auth-username").addEventListener("keydown", e => {
-  if (e.key === "Enter") document.getElementById("send-otp-btn").click();
-});
 
 // ── Step 2: Verify OTP ──
 document.getElementById("verify-otp-btn").addEventListener("click", async () => {
@@ -492,11 +546,18 @@ document.getElementById("verify-otp-btn").addEventListener("click", async () => 
   const btn = document.getElementById("verify-otp-btn");
   btn.disabled = true; btn.textContent = "Verifying…";
   try {
-    const user = await api("/api/auth/verify-otp", {
+    const res = await api("/api/auth/verify-otp", {
       method: "POST",
       body: JSON.stringify({ email: _pendingEmail, code }),
     });
-    loginSuccess(user);
+    // New users (no prior login = account just created) go to onboarding
+    if (res.is_new_user) {
+      // Store user info so onboarding can pass it back
+      sessionStorage.setItem("dragun_user", JSON.stringify(res));
+      window.location.href = "/onboarding";
+    } else {
+      loginSuccess(res);
+    }
   } catch(e) {
     $err.textContent = e.message;
     clearOTPBoxes(); otpBoxes[0].focus();
@@ -513,11 +574,10 @@ document.getElementById("back-btn").addEventListener("click", () => {
 
 document.getElementById("resend-btn").addEventListener("click", async () => {
   const email = document.getElementById("auth-email").value.trim();
-  const username = document.getElementById("auth-username").value.trim();
   const btn = document.getElementById("resend-btn");
   btn.textContent = "Sending…";
   try {
-    await api("/api/auth/send-otp", { method:"POST", body:JSON.stringify({email, username: username||null}) });
+    await api("/api/auth/send-otp", { method:"POST", body:JSON.stringify({email}) });
     clearOTPBoxes(); otpBoxes[0].focus();
     btn.textContent = "Sent ✓";
     setTimeout(() => { btn.textContent = "Resend code"; }, 3000);
@@ -529,6 +589,7 @@ document.getElementById("resend-btn").addEventListener("click", async () => {
 
 function loginSuccess(user) {
   state.userId = user.user_id; state.handle = user.handle;
+  try { localStorage.setItem("dragun_session", JSON.stringify({ user_id: user.user_id, handle: user.handle })); } catch(e) {}
   $login.style.display = "none"; $app.classList.add("visible");
   document.getElementById("sidebar-handle").textContent = "@" + user.handle;
   addMsg("dragun","Hoard opened for @"+user.handle+". What enters the lair?","ov-messages");
@@ -546,7 +607,19 @@ function loginSuccess(user) {
   refreshAll();
 }
 
-document.getElementById("logout-btn").addEventListener("click", () => { location.reload(); });
+document.getElementById("logout-btn").addEventListener("click", () => {
+  try { localStorage.removeItem("dragun_session"); } catch(e) {}
+  location.reload();
+});
+
+document.getElementById("delete-account-btn").addEventListener("click", async () => {
+  if (!confirm("Delete your account?\n\nYour spending data stays on our servers as anonymous records — your name and email are permanently removed. This can't be undone.")) return;
+  try {
+    await fetch(`/api/users/${state.userId}`, { method: "DELETE" });
+  } catch(e) {}
+  try { localStorage.removeItem("dragun_session"); } catch(e) {}
+  location.reload();
+});
 
 /* ════ NAV ════ */
 const pageTitles = {overview:"Overview",inventory:"Inventory Ledger",budgets:"Budget Tracker",chat:"Ask Dragun",guards:"Guards & Caps"};

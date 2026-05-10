@@ -74,6 +74,20 @@ class DragunRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def update_user_handle(self, user_id: str, new_handle: str) -> User:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_user_profile(self, user_id: str, **fields) -> User:
+        """Update arbitrary scalar fields on a user record."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def anonymize_user(self, user_id: str) -> None:
+        """Strip PII from the user record but keep all spending data as synthetic."""
+        raise NotImplementedError
+
+    @abstractmethod
     def delete_user_data(self, user_id: str) -> None:
         raise NotImplementedError
 

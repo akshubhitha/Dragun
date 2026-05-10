@@ -180,6 +180,49 @@ class InMemoryRepository(DragunRepository):
                 "tags": [tag.model_dump(mode="json") for tag in self.tags.values()],
             }
 
+    def update_user_profile(self, user_id: str, **fields) -> User:
+        with self._lock:
+            user = self.users.get(user_id)
+            if not user:
+                raise ValueError("User not found.")
+            for key, value in fields.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
+            return deepcopy(user)
+
+    def update_user_handle(self, user_id: str, new_handle: str) -> User:
+        normalized = new_handle.strip().lower()
+        with self._lock:
+            user = self.users.get(user_id)
+            if not user:
+                raise ValueError("User not found.")
+            if normalized in self.users_by_handle and self.users_by_handle[normalized] != user_id:
+                raise ValueError("That username is already taken.")
+            # Remove old handle mapping
+            self.users_by_handle.pop(user.handle, None)
+            user.handle = normalized
+            self.users_by_handle[normalized] = user_id
+            return deepcopy(user)
+
+    def anonymize_user(self, user_id: str) -> None:
+        """Remove PII; keep events/budgets under a synthetic handle."""
+        import secrets
+        with self._lock:
+            user = self.users.get(user_id)
+            if not user:
+                return
+            # Remove identity lookups
+            self.users_by_handle.pop(user.handle, None)
+            if user.email:
+                self.users_by_email.pop(user.email.strip().lower(), None)
+            # Overwrite PII fields in place
+            synth = f"synth_{secrets.token_hex(6)}"
+            user.handle = synth
+            user.email = None
+            user.monthly_income = 0.0
+            user.fixed_costs_floor = 0.0
+            # Don't re-add to lookup indexes — account is gone, data stays
+
     def delete_user_data(self, user_id: str) -> None:
         with self._lock:
             user = self.users.pop(user_id, None)

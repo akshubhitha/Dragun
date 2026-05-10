@@ -66,6 +66,8 @@ class User(BaseModel):
     email: str | None = None
     zip_code: str = ""
     currency: str = "USD"
+    monthly_income: float = 0.0
+    fixed_costs_floor: float = 0.0
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("handle")
@@ -216,6 +218,8 @@ class UserPublic(BaseModel):
     handle: str
     email: str | None = None
     currency: str
+    monthly_income: float = 0.0
+    fixed_costs_floor: float = 0.0
     created_at: datetime
 
     @classmethod
@@ -225,6 +229,8 @@ class UserPublic(BaseModel):
             handle=user.handle,
             email=user.email,
             currency=user.currency,
+            monthly_income=user.monthly_income,
+            fixed_costs_floor=user.fixed_costs_floor,
             created_at=user.created_at,
         )
 

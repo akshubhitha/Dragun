@@ -1,0 +1,1035 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Welcome to Dragun</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --accent:     #00c9a7;
+      --accent-dim: #00a387;
+      --navy:       #0f1923;
+      --panel:      #ffffff;
+      --bg:         #f0f2f5;
+      --border:     #dde1e7;
+      --text:       #1a2332;
+      --muted:      #6b7a8d;
+      --green:      #0eb37a;
+      --red:        #e84040;
+    }
+    html, body {
+      height: 100%;
+      font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+      font-size: 15px;
+      background: linear-gradient(135deg, #0f1923 0%, #1a3050 60%, #0f2b3d 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: 20px;
+    }
+
+    /* ── Card ──────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      width: min(480px, 100%);
+      height: min(680px, calc(100dvh - 40px));
+      box-shadow: 0 32px 80px rgba(0,0,0,.45);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Mobile: fill the entire screen ────────── */
+    @media (max-width: 520px) {
+      html, body { padding: 0; align-items: stretch; justify-content: stretch; background: #fff; }
+      .card {
+        width: 100%; height: 100vh; height: 100dvh;
+        border-radius: 0; box-shadow: none;
+      }
+    }
+
+    /* ── Top bar ───────────────────────────────── */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      background: #fafbfc;
+      gap: 12px;
+    }
+    .logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .logo-text { font-size: 15px; font-weight: 800; letter-spacing: -.4px; color: var(--text); }
+    .logo-text span { color: var(--accent); }
+
+    /* Progress bar */
+    .progress-wrap { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .progress-fill  { height: 100%; background: var(--accent); border-radius: 2px; transition: width .4s ease; }
+
+    .skip-btn {
+      font-size: 13px; color: var(--muted); background: none; border: none;
+      cursor: pointer; padding: 8px 0; flex-shrink: 0; white-space: nowrap;
+      transition: color .15s; min-height: 44px; display: flex; align-items: center;
+    }
+    .skip-btn:hover { color: var(--text); }
+
+    /* ── Chat area ─────────────────────────────── */
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 18px 20px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-behavior: smooth;
+    }
+    .chat-area::-webkit-scrollbar { width: 3px; }
+    .chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .dragon-msg { display: flex; gap: 10px; align-items: flex-start; }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--navy); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 2px; box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .bubble {
+      background: #f8f9fb; border: 1px solid var(--border);
+      border-radius: 4px 14px 14px 14px;
+      padding: 12px 15px; font-size: 14px; line-height: 1.65;
+      color: var(--text); max-width: calc(100% - 44px);
+    }
+    .bubble .hi { color: var(--accent); font-weight: 600; }
+    .bubble strong { font-weight: 600; }
+
+    .user-msg { display: flex; justify-content: flex-end; }
+    .user-msg .bubble {
+      background: var(--navy); color: #fff;
+      border: none; border-radius: 14px 4px 14px 14px; max-width: 80%;
+    }
+
+    .typing-msg { display: flex; gap: 10px; align-items: flex-start; }
+    .typing-dots {
+      background: #f8f9fb; border: 1px solid var(--border);
+      border-radius: 4px 14px 14px 14px;
+      padding: 14px 18px; display: flex; gap: 5px; align-items: center;
+    }
+    .typing-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite; }
+    .typing-dots span:nth-child(2) { animation-delay: .2s; }
+    .typing-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-5px);opacity:1} }
+
+    /* ── Chips ─────────────────────────────────── */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 9px 15px; border-radius: 22px; border: 1.5px solid var(--border);
+      background: #fff; font-size: 14px; color: var(--text);
+      cursor: pointer; transition: all .15s; user-select: none;
+      line-height: 1.4; font-family: inherit; min-height: 40px;
+      display: inline-flex; align-items: center;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); background: #f0fdf9; }
+    .chip.sel  { border-color: var(--accent); color: var(--accent); background: #f0fdf9; font-weight: 600; }
+    .chip.gold { border-color: rgba(0,201,167,.3); color: var(--accent-dim); background: #f0fdf9; }
+    .chip.gold:hover { border-color: var(--accent); }
+
+    /* ── Action area ───────────────────────────── */
+    .action-area {
+      padding: 12px 20px max(16px, env(safe-area-inset-bottom));
+      display: flex; flex-direction: column;
+      gap: 8px; border-top: 1px solid var(--border);
+      background: #fafbfc; flex-shrink: 0;
+    }
+    .btn-primary {
+      width: 100%; padding: 14px; background: var(--accent); color: #fff;
+      border: none; border-radius: 10px; font: 600 15px/1 inherit;
+      cursor: pointer; transition: background .15s, transform .08s;
+      min-height: 50px;
+    }
+    .btn-primary:hover { background: var(--accent-dim); }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-primary:disabled { background: #b0b8c4; cursor: not-allowed; }
+    .btn-secondary {
+      width: 100%; padding: 12px; background: transparent; color: var(--muted);
+      border: 1.5px solid var(--border); border-radius: 10px;
+      font: 500 14px/1 inherit; cursor: pointer; transition: all .15s;
+      min-height: 46px;
+    }
+    .btn-secondary:hover { color: var(--text); border-color: #b0b8c4; }
+
+    .input-row { display: flex; gap: 8px; }
+    .text-input {
+      flex: 1; padding: 13px 15px; border: 1.5px solid var(--border);
+      border-radius: 10px; font: inherit; font-size: 15px; color: var(--text);
+      background: #fff; outline: none; transition: border-color .15s, box-shadow .15s;
+      min-height: 50px;
+    }
+    .text-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,201,167,.1); }
+    .text-input::placeholder { color: #b0b8c4; }
+    .send-btn {
+      width: 50px; min-height: 50px; background: var(--accent); color: #fff;
+      border: none; border-radius: 10px; cursor: pointer;
+      font-size: 18px; flex-shrink: 0; transition: background .15s;
+    }
+    .send-btn:hover { background: var(--accent-dim); }
+
+    /* Fixed cost calculator */
+    .calc-grid { display: flex; flex-direction: column; gap: 8px; }
+    .calc-row { display: flex; align-items: center; gap: 10px; }
+    .calc-label { font-size: 12px; color: var(--muted); width: 115px; flex-shrink: 0; }
+    .calc-input {
+      flex: 1; padding: 10px 12px; border: 1.5px solid var(--border);
+      border-radius: 8px; font: inherit; font-size: 14px; color: var(--text);
+      background: #fff; outline: none; transition: border-color .15s;
+      min-height: 44px;
+    }
+    .calc-input:focus { border-color: var(--accent); }
+    .calc-input::placeholder { color: #c0c8d4; }
+    .calc-total {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 11px 15px; background: var(--navy); border-radius: 10px;
+      margin-top: 4px;
+    }
+    .calc-total-label { font-size: 12px; color: rgba(255,255,255,.5); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .calc-total-val { font-size: 20px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+    /* Example card */
+    .example-card {
+      background: #f8f9fb; border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; font-size: 13px;
+    }
+    .example-card-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; }
+    .example-line { display: flex; justify-content: space-between; color: var(--muted); padding: 3px 0; }
+    .example-line.total { color: var(--text); font-weight: 700; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 7px; }
+    .example-line.total span:last-child { color: var(--accent); }
+
+    /* Budget confirm card */
+    .budget-card {
+      background: #f0fdf9; border: 1px solid rgba(0,201,167,.25);
+      border-radius: 10px; padding: 12px 14px; margin-top: 4px;
+    }
+    .budget-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+    .budget-row + .budget-row { margin-top: 4px; }
+    .budget-lbl { color: var(--muted); font-size: 13px; }
+    .budget-val { font-weight: 700; color: var(--accent); }
+
+    /* Done card */
+    .done-card { background: #f0fdf9; border: 1px solid rgba(0,201,167,.2); border-radius: 12px; padding: 14px 16px; }
+    .done-card-title { font-size: 10px; font-weight: 700; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    .done-card-body { font-size: 14px; color: var(--text); line-height: 2.1; }
+
+    /* Summary card */
+    .summary-card { background: var(--navy); border-radius: 12px; padding: 16px 18px; }
+    .summary-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 14px; }
+    .summary-row .slbl { color: rgba(255,255,255,.5); }
+    .summary-row .sval { font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+    .summary-row .sval.accent { color: var(--accent); }
+    .summary-row .sval.red { color: #f87171; }
+    .summary-divider { border: none; border-top: 1px solid rgba(255,255,255,.1); margin: 6px 0; }
+
+    /* Hero banner */
+    .hero-banner { background: var(--navy); border-radius: 12px; padding: 16px 18px; flex-shrink: 0; }
+    .hero-eyebrow { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.4); margin-bottom: 7px; }
+    .hero-line { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.55; }
+    .hero-line em { color: var(--accent); font-style: normal; }
+
+    /* Privacy note */
+    .privacy-note { font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 10px 12px; border: 1px solid var(--border); line-height: 1.6; }
+
+    /* Section label */
+    .section-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+    .hint { font-size: 12px; color: var(--muted); }
+
+    /* Screen transition */
+    .screen { display: none; flex-direction: column; height: 100%; animation: fadeUp .2s ease; }
+    .screen.active { display: flex; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  </style>
+</head>
+<body>
+<div class="card" id="ob-card">
+
+  <!-- ══ S0: Welcome ══════════════════════════════════════ -->
+  <div class="screen active" id="s0">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:0%"></div></div>
+      <button class="skip-btn" onclick="goSkip()">skip all →</button>
+    </div>
+    <div class="chat-area">
+      <div class="hero-banner">
+        <div class="hero-eyebrow">Why Dragun is different</div>
+        <div class="hero-line">Your bank thinks that $150 Target run was <em>'groceries.'</em><br>Was it though?</div>
+      </div>
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          Hey. I'm Dragun.<br><br>
+          You tell me what you bought. I track it, categorize it, and flag when things look off.<br><br>
+          No bank linking. No card sync. Just you telling me stuff — and me actually remembering it.
+        </div>
+      </div>
+    </div>
+    <div class="action-area">
+      <button class="btn-primary" onclick="go('0b')">Let's go →</button>
+      <button class="btn-secondary" onclick="goSkip()">I'll figure it out myself</button>
+    </div>
+  </div>
+
+  <!-- ══ S0b: Username ══════════════════════════════════════ -->
+  <div class="screen" id="s0b">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:8%"></div></div>
+      <button class="skip-btn" onclick="go(1)">skip</button>
+    </div>
+    <div class="chat-area" id="username-chat">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          What should I call you?<br><br>
+          Pick something short. This is your name in the hoard.
+        </div>
+      </div>
+    </div>
+    <div class="action-area">
+      <div class="input-row">
+        <input class="text-input" id="username-input" placeholder="e.g. ember, zora, fox…" maxlength="30" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+        <button class="send-btn" id="username-send-btn" onclick="submitUsername()">→</button>
+      </div>
+      <div id="username-error" style="font-size:12px;color:var(--red);min-height:16px;text-align:center;"></div>
+      <button class="btn-secondary" onclick="go(1)">Skip for now</button>
+    </div>
+  </div>
+
+  <!-- ══ S1: Pain points ═════════════════════════════════ -->
+  <div class="screen" id="s1">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:14%"></div></div>
+      <button class="skip-btn" onclick="go(2)">skip</button>
+    </div>
+    <div class="chat-area">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          Where does your money disappear to?<br><br>
+          Pick everything that sounds familiar.
+        </div>
+      </div>
+      <div class="chips" id="pain-chips">
+        <div class="chip" onclick="togglePain(this,'clothes')">👕 Clothes &amp; fashion</div>
+        <div class="chip" onclick="togglePain(this,'food')">🛒 Groceries</div>
+        <div class="chip" onclick="togglePain(this,'dining')">🍽 Dining out</div>
+        <div class="chip" onclick="togglePain(this,'going-out')">🍺 Bars &amp; going out</div>
+        <div class="chip" onclick="togglePain(this,'coffee')">☕ Coffee &amp; snacks</div>
+        <div class="chip" onclick="togglePain(this,'skincare')">🧴 Skincare &amp; wellness</div>
+        <div class="chip" onclick="togglePain(this,'pets')">🐾 Pets</div>
+        <div class="chip" onclick="togglePain(this,'home')">🏠 Home &amp; cleaning</div>
+        <div class="chip" onclick="togglePain(this,'fitness')">💪 Gym &amp; fitness</div>
+        <div class="chip" onclick="togglePain(this,'subs')">📱 Subscriptions</div>
+        <div class="chip" onclick="togglePain(this,'tech')">💻 Electronics</div>
+        <div class="chip" onclick="togglePain(this,'saving')">💰 Just want to save more</div>
+      </div>
+      <div class="hint" id="pain-count" style="display:none"></div>
+    </div>
+    <div class="action-area" id="pain-action" style="display:none">
+      <button class="btn-primary" onclick="go(2)">These are my weak spots →</button>
+    </div>
+  </div>
+
+  <!-- ══ S2: First log ════════════════════════════════════ -->
+  <div class="screen" id="s2">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:28%"></div></div>
+      <button class="skip-btn" onclick="go(3)">skip</button>
+    </div>
+    <div class="chat-area" id="log-chat">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          Before anything else — let's put something in the hoard.<br><br>
+          What's the last thing you bought? Doesn't matter how small.
+        </div>
+      </div>
+      <div class="hint">Try one of these</div>
+      <div class="chips" id="example-chips">
+        <div class="chip gold" onclick="useExample(this)">coffee $4.50</div>
+        <div class="chip gold" onclick="useExample(this)">takeout $28</div>
+        <div class="chip gold" onclick="useExample(this)">new sneakers $90</div>
+        <div class="chip gold" onclick="useExample(this)">Spotify $11/mo</div>
+      </div>
+    </div>
+    <div class="action-area">
+      <div class="input-row">
+        <input class="text-input" id="log-input" placeholder="What did you buy?" />
+        <button class="send-btn" onclick="sendLog()">→</button>
+      </div>
+      <button class="btn-secondary" onclick="go(3)">Skip for now</button>
+    </div>
+  </div>
+
+  <!-- ══ S3: Fixed costs ══════════════════════════════════ -->
+  <div class="screen" id="s3">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:42%"></div></div>
+      <button class="skip-btn" onclick="go(4)">skip</button>
+    </div>
+    <div class="chat-area" id="fixed-chat">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          Do you know roughly how much leaves your account <strong>automatically</strong> every month — before you spend a single dollar?
+        </div>
+      </div>
+
+      <!-- Example card -->
+      <div class="example-card">
+        <div class="example-card-label">💡 For example</div>
+        <div class="example-line"><span>Rent / mortgage</span><span>$1,200</span></div>
+        <div class="example-line"><span>Car payment</span><span>$350</span></div>
+        <div class="example-line"><span>Health insurance</span><span>$180</span></div>
+        <div class="example-line"><span>Phone plan</span><span>$85</span></div>
+        <div class="example-line"><span>Internet</span><span>$60</span></div>
+        <div class="example-line total"><span>Fixed floor</span><span>~$1,875 / month</span></div>
+      </div>
+
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">Things like electricity and gas are a little different — they change every month, so we'll count those separately. This is just the stuff that's exactly the same no matter what.</div>
+      </div>
+    </div>
+    <div class="action-area">
+      <button class="btn-primary" onclick="showFixedInput()">Yes, I know my number →</button>
+      <button class="btn-secondary" onclick="showFixedCalc()">Help me add it up</button>
+      <button class="btn-secondary" onclick="go(4)" style="border:none;color:var(--muted);font-size:12px;padding:4px">Skip for now</button>
+    </div>
+  </div>
+
+  <!-- ══ S3b: Fixed costs — know the number ══════════════ -->
+  <div class="screen" id="s3b">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:42%"></div></div>
+      <button class="skip-btn" onclick="go(4)">skip</button>
+    </div>
+    <div class="chat-area">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">What's your fixed monthly floor? Rent, insurance, car payment, loans, phone, internet — everything that hits automatically.</div>
+      </div>
+    </div>
+    <div class="action-area">
+      <div class="input-row">
+        <input class="text-input" id="fixed-known-input" placeholder="e.g. 2100" type="number" min="0" step="1"/>
+        <button class="send-btn" onclick="submitFixedKnown()">→</button>
+      </div>
+      <button class="btn-secondary" onclick="go(4)">Skip</button>
+    </div>
+  </div>
+
+  <!-- ══ S3c: Fixed costs — calculator ═══════════════════ -->
+  <div class="screen" id="s3c">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:42%"></div></div>
+      <button class="skip-btn" onclick="go(4)">skip</button>
+    </div>
+    <div class="chat-area">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">Fill in what you pay. Leave anything blank if it doesn't apply.</div>
+      </div>
+      <div class="calc-grid">
+        <div class="calc-row"><span class="calc-label">Rent / mortgage</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="rent" type="number" min="0"/></div>
+        <div class="calc-row"><span class="calc-label">Car payment</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="car" type="number" min="0"/></div>
+        <div class="calc-row"><span class="calc-label">Loans / debt mins</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="loans" type="number" min="0"/></div>
+        <div class="calc-row"><span class="calc-label">Health insurance</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="health" type="number" min="0"/></div>
+        <div class="calc-row"><span class="calc-label">Car insurance</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="carins" type="number" min="0"/></div>
+        <div class="calc-row"><span class="calc-label">Phone plan</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="phone" type="number" min="0"/></div>
+        <div class="calc-row"><span class="calc-label">Internet / WiFi</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="wifi" type="number" min="0"/></div>
+        <div class="calc-row"><span class="calc-label">Other (anything else)</span><input class="calc-input" placeholder="$0" oninput="updateCalcTotal()" data-key="other" type="number" min="0"/></div>
+      </div>
+      <div class="calc-total">
+        <span class="calc-total-label">Fixed floor</span>
+        <span class="calc-total-val" id="calc-total-val">$0 / mo</span>
+      </div>
+    </div>
+    <div class="action-area">
+      <button class="btn-primary" id="calc-done-btn" onclick="submitFixedCalc()">That's my fixed floor →</button>
+      <button class="btn-secondary" onclick="go(4)">Skip</button>
+    </div>
+  </div>
+
+  <!-- ══ S4: Variable budgets (one by one) ═══════════════ -->
+  <div class="screen" id="s4">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" id="var-progress" style="width:57%"></div></div>
+      <button class="skip-btn" id="var-skip-btn" onclick="skipVarCat()">skip</button>
+    </div>
+    <div class="chat-area" id="var-chat"></div>
+    <div class="action-area" id="var-action" style="display:none"></div>
+  </div>
+
+  <!-- ══ S5: Income ════════════════════════════════════════ -->
+  <div class="screen" id="s5">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:85%"></div></div>
+      <button class="skip-btn" onclick="go(6)">skip</button>
+    </div>
+    <div class="chat-area" id="income-chat">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          Last real question — optional, but it unlocks the full picture.<br><br>
+          What's your monthly take-home after taxes?
+        </div>
+      </div>
+      <div class="hint">This stays on your device and is never shared.</div>
+    </div>
+    <div class="action-area">
+      <div class="input-row">
+        <input class="text-input" id="income-input" placeholder="e.g. 4500" type="number" min="0" step="1"/>
+        <button class="send-btn" onclick="submitIncome()">→</button>
+      </div>
+      <button class="btn-secondary" onclick="go(6)">Skip — I'd rather not say</button>
+    </div>
+  </div>
+
+  <!-- ══ S6: Demographics ══════════════════════════════════ -->
+  <div class="screen" id="s6">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:92%"></div></div>
+      <button class="skip-btn" onclick="go(7)">skip</button>
+    </div>
+    <div class="chat-area">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          One last thing — truly optional.<br><br>
+          Knowing who uses Dragun helps us build better features for people like you. Nothing here is ever linked to your activity or shared with anyone.
+        </div>
+      </div>
+      <div>
+        <div class="section-label">Household size</div>
+        <div class="chips" id="family-chips">
+          <div class="chip" onclick="selOne(this,'family')">Just me</div>
+          <div class="chip" onclick="selOne(this,'family')">Me + a partner</div>
+          <div class="chip" onclick="selOne(this,'family')">Family of 3–4</div>
+          <div class="chip" onclick="selOne(this,'family')">5 or more</div>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">Gender <span style="text-transform:none;letter-spacing:0;font-weight:400;font-size:11px">(optional)</span></div>
+        <div class="chips" id="gender-chips">
+          <div class="chip" onclick="selOne(this,'gender')">Woman</div>
+          <div class="chip" onclick="selOne(this,'gender')">Man</div>
+          <div class="chip" onclick="selOne(this,'gender')">Nonbinary</div>
+          <div class="chip" onclick="selOne(this,'gender')">Prefer not to say</div>
+        </div>
+      </div>
+      <div class="privacy-note">🔒 Used only for aggregate product research. Never linked to your purchases, never sold, never shared with third parties.</div>
+    </div>
+    <div class="action-area">
+      <button class="btn-primary" onclick="go(7)">Done →</button>
+      <button class="btn-secondary" onclick="go(7)">Skip this</button>
+    </div>
+  </div>
+
+  <!-- ══ S7: Done ══════════════════════════════════════════ -->
+  <div class="screen" id="s7">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:100%"></div></div>
+    </div>
+    <div class="chat-area">
+      <div style="text-align:center; padding:18px 0 12px;">
+        <div style="margin-bottom:12px;">
+          <svg width="52" height="52" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        </div>
+        <div style="font-size:21px; font-weight:800; color:var(--text); letter-spacing:-.5px; margin-bottom:4px;">Hoard established.</div>
+        <div style="font-size:13px; color:var(--muted);">Your dragon is awake.</div>
+      </div>
+
+      <!-- Budget picture (shown if we have any data) -->
+      <div class="summary-card" id="summary-card" style="display:none">
+        <div class="summary-row"><span class="slbl">Monthly take-home</span><span class="sval" id="sum-income">—</span></div>
+        <hr class="summary-divider"/>
+        <div class="summary-row"><span class="slbl">Fixed costs</span><span class="sval" id="sum-fixed">—</span></div>
+        <div class="summary-row"><span class="slbl">Variable budgets</span><span class="sval" id="sum-var">—</span></div>
+        <hr class="summary-divider"/>
+        <div class="summary-row"><span class="slbl">Unaccounted for</span><span class="sval accent" id="sum-remaining">—</span></div>
+      </div>
+
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble" id="done-msg">From here, just tell me what you buy. I'll track it, flag anything that looks off, and give you a real picture of your spending.<br><br>And if you're about to spend something big — ask me first.</div>
+      </div>
+
+      <div class="done-card">
+        <div class="done-card-title">What you can do now</div>
+        <div class="done-card-body">
+          💬 Log purchases in plain language<br>
+          🎯 Set or adjust budgets anytime<br>
+          📦 Track what you own<br>
+          🤔 Ask "should I buy this?" before spending
+        </div>
+      </div>
+    </div>
+    <div class="action-area">
+      <button class="btn-primary" onclick="openHoard()">Open the hoard →</button>
+    </div>
+  </div>
+
+  <!-- ══ Skip ══════════════════════════════════════════════ -->
+  <div class="screen" id="s-skip">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+    </div>
+    <div class="chat-area">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">No problem. Hoard's empty for now.<br><br>Whenever you're ready — just tell me what you bought.</div>
+      </div>
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble"><span class="hi">Try: "bought coffee $4.50" or "new shoes $80 at Zara"</span></div>
+      </div>
+    </div>
+    <div class="action-area">
+      <button class="btn-primary" onclick="openHoard()">Open the hoard →</button>
+    </div>
+  </div>
+
+</div><!-- /card -->
+
+<script>
+// ── User data from sessionStorage ───────────────────────────
+var userData = {};
+try { userData = JSON.parse(sessionStorage.getItem('dragun_user') || '{}'); } catch(e) {}
+
+// ── State ───────────────────────────────────────────────────
+var selectedPains = [];
+var fixedFloor    = 0;
+var varBudgetsSet = [];
+var income        = 0;
+var varQueue      = [];
+var varIdx        = 0;
+
+// All variable categories (shown in order; pain-selected ones go first)
+var allVarCats = ['food','dining','coffee','clothes','pets','home','fitness','subs','tech','going-out','skincare','saving'];
+
+var varData = {
+  food:        { label:'Groceries',          emoji:'🛒', line:"Cooking at home is the budget-friendly option. But it still adds up.", ask:"Monthly grocery budget?",                ph:"e.g. $400/mo",  presets:["$200","$300","$400","$500"] },
+  dining:      { label:'Dining out',         emoji:'🍽', line:"Just dinner is never just dinner.",                                    ask:"Monthly dining out budget?",              ph:"e.g. $250/mo",  presets:["$150","$250","$350","$500"] },
+  coffee:      { label:'Coffee & snacks',    emoji:'☕', line:"$6 coffee every weekday is $130/month. I'm not judging. Just noting.", ask:"Monthly coffee and snack budget?",        ph:"e.g. $80/mo",   presets:["$40","$80","$120","$200"] },
+  clothes:     { label:'Clothing',           emoji:'👕', line:"A shirt here, a sale there. It adds up before you notice.",           ask:"Monthly clothing budget?",                ph:"e.g. $150/mo",  presets:["$75","$150","$250","$400"] },
+  pets:        { label:'Pets',               emoji:'🐾', line:"Food, vet, toys — pets have their own spending personality.",         ask:"Monthly pet budget?",                     ph:"e.g. $100/mo",  presets:["$60","$100","$150","$250"] },
+  home:        { label:'Home & cleaning',    emoji:'🏠', line:"Cleaning supplies, a new rug, curtains. The home always wants more.", ask:"Monthly home and household budget?",      ph:"e.g. $80/mo",   presets:["$50","$80","$150","$250"] },
+  fitness:     { label:'Health & fitness',   emoji:'💪', line:"Gym, protein, classes — the healthy ones are still spending ones.",   ask:"Monthly health and fitness budget?",      ph:"e.g. $100/mo",  presets:["$50","$100","$150","$250"] },
+  subs:        { label:'Subscriptions',      emoji:'📱', line:"The original slow leak. You forget they exist until you add them up.", ask:"Monthly total subscription budget?",     ph:"e.g. $60/mo",   presets:["$30","$60","$100","$150"] },
+  tech:        { label:'Electronics & tech', emoji:'💻', line:"Always justified in the moment. Then it sits in a drawer.",           ask:"Monthly tech and electronics budget?",    ph:"e.g. $100/mo",  presets:["$50","$100","$200","$400"] },
+  'going-out': { label:'Bars & going out',   emoji:'🍺', line:"Fun until you check your account Sunday morning.",                   ask:"Monthly going out budget?",               ph:"e.g. $150/mo",  presets:["$75","$150","$250","$400"] },
+  skincare:    { label:'Skincare & wellness',emoji:'🧴', line:"Easy to justify as self-care. Also easy to overspend on.",           ask:"Monthly skincare and wellness budget?",   ph:"e.g. $80/mo",   presets:["$40","$80","$120","$200"] },
+  saving:      { label:'General saving',     emoji:'💰', line:"Sometimes it's not one category — you just want to see where it all goes.", ask:"Max monthly non-essential spend?", ph:"e.g. $800/mo",  presets:["$400","$600","$800","$1200"] }
+};
+
+// ── Navigation ──────────────────────────────────────────────
+function go(n) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  var el = document.getElementById('s' + n);
+  if (!el) return;
+  el.classList.add('active');
+  el.scrollTop = 0;
+  if (n === '0b') setTimeout(function() { var inp = document.getElementById('username-input'); if(inp) inp.focus(); }, 80);
+  if (n === 4) initVarBudgets();
+  if (n === 7) buildSummary();
+}
+function goSkip() {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('s-skip').classList.add('active');
+}
+async function openHoard() {
+  var userId = userData.user_id || '';
+  if (!userId) { window.location.href = '/'; return; }
+  try {
+    // Save income + fixed costs to user profile
+    var profileBody = {};
+    if (income > 0) profileBody.monthly_income = income;
+    if (fixedFloor > 0) profileBody.fixed_costs_floor = fixedFloor;
+    if (Object.keys(profileBody).length > 0) {
+      await fetch('/api/users/' + userId + '/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileBody)
+      });
+    }
+    // Save each variable budget
+    for (var i = 0; i < varBudgetsSet.length; i++) {
+      var b = varBudgetsSet[i];
+      if (b.amt > 0) {
+        await fetch('/api/users/' + userId + '/budgets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            budget_scope: b.cat.toLowerCase(),
+            scope_tags: [b.cat.toLowerCase()],
+            budget_amount: b.amt,
+            period_type: 'monthly'
+          })
+        });
+      }
+    }
+  } catch(e) { /* best effort — don't block navigation */ }
+  window.location.href = '/';
+}
+
+// ── Helpers ─────────────────────────────────────────────────
+function avatar() {
+  return '<div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>';
+}
+function typing() {
+  var t = document.createElement('div');
+  t.className = 'typing-msg';
+  t.innerHTML = avatar() + '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  return t;
+}
+function dragonMsg(html) {
+  var d = document.createElement('div');
+  d.className = 'dragon-msg';
+  d.innerHTML = avatar() + '<div class="bubble">' + html + '</div>';
+  return d;
+}
+function userMsg(text) {
+  var d = document.createElement('div');
+  d.className = 'user-msg';
+  d.innerHTML = '<div class="bubble">' + text + '</div>';
+  return d;
+}
+function appendTypingThen(chat, delay, fn) {
+  var t = typing(); chat.appendChild(t); chat.scrollTop = 9999;
+  setTimeout(function() { t.remove(); fn(); chat.scrollTop = 9999; }, delay);
+}
+
+// ── Username screen ──────────────────────────────────────────
+async function submitUsername() {
+  var val = (document.getElementById('username-input').value || '').trim().toLowerCase();
+  var errEl = document.getElementById('username-error');
+  errEl.textContent = '';
+  if (!val) { errEl.textContent = 'Enter a username to continue.'; return; }
+  if (val.length < 2) { errEl.textContent = 'At least 2 characters please.'; return; }
+  if (!/^[a-z0-9_\-]+$/.test(val)) { errEl.textContent = 'Letters, numbers, hyphens, and underscores only.'; return; }
+  var btn = document.getElementById('username-send-btn');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    var userId = userData.user_id || '';
+    if (!userId) { go(1); return; }
+    var res = await fetch('/api/users/' + userId + '/handle', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: val })
+    });
+    var data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.detail || 'Something went wrong.';
+      return;
+    }
+    userData.handle = val;
+    try { sessionStorage.setItem('dragun_user', JSON.stringify(userData)); } catch(e) {}
+    var chat = document.getElementById('username-chat');
+    chat.appendChild(userMsg(val));
+    appendTypingThen(chat, 800, function() {
+      chat.appendChild(dragonMsg('Got it, <span class="hi">@' + val + '</span>. Let\'s build your hoard.'));
+      setTimeout(function() { go(1); }, 1000);
+    });
+  } catch(e) {
+    errEl.textContent = 'Connection error. Try again.';
+  } finally {
+    btn.disabled = false; btn.textContent = '→';
+  }
+}
+
+// ── Pain point selection ─────────────────────────────────────
+function togglePain(el, key) {
+  var idx = selectedPains.indexOf(key);
+  if (idx > -1) { selectedPains.splice(idx, 1); el.classList.remove('sel'); }
+  else { selectedPains.push(key); el.classList.add('sel'); }
+  var count = document.getElementById('pain-count');
+  var action = document.getElementById('pain-action');
+  if (selectedPains.length > 0) {
+    count.style.display = 'block';
+    count.textContent = selectedPains.length + ' selected';
+    action.style.display = 'flex';
+    // Update example chips to match first pain
+    var firstKey = selectedPains[0];
+    if (varData[firstKey]) {
+      var chips = document.getElementById('example-chips');
+      chips.innerHTML = '';
+      var examples = [varData[firstKey].presets[1] ? varData[firstKey].label.toLowerCase() + ' ' + varData[firstKey].presets[1] : 'coffee $4.50', 'takeout $28', 'coffee $4.50', 'Spotify $11/mo'];
+      examples.slice(0,4).forEach(function(ex) {
+        var c = document.createElement('div');
+        c.className = 'chip gold'; c.textContent = ex;
+        c.onclick = function() { useExample(c); };
+        chips.appendChild(c);
+      });
+    }
+  } else {
+    count.style.display = 'none';
+    action.style.display = 'none';
+  }
+}
+function selOne(el, group) {
+  document.querySelectorAll('[onclick*="selOne(this,\'' + group + '\')"]').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+// ── First log ────────────────────────────────────────────────
+function useExample(el) {
+  document.getElementById('log-input').value = el.textContent;
+  document.getElementById('log-input').focus();
+}
+function sendLog() {
+  var val = document.getElementById('log-input').value.trim();
+  if (!val) return;
+  var chat = document.getElementById('log-chat');
+  document.getElementById('example-chips').style.display = 'none';
+  chat.appendChild(userMsg(val));
+  chat.scrollTop = 9999;
+  document.getElementById('log-input').value = '';
+  appendTypingThen(chat, 900, function() {
+    chat.appendChild(dragonMsg('Logged. That\'s your first entry in the hoard.<br><br>Keep going like that and you\'ll have a real picture within a week.'));
+    setTimeout(function() { go(3); }, 1400);
+  });
+}
+
+// ── Fixed costs — know the number ───────────────────────────
+function showFixedInput() { go('3b'); setTimeout(function(){ document.getElementById('fixed-known-input').focus(); }, 100); }
+function showFixedCalc()  { go('3c'); }
+
+function submitFixedKnown() {
+  var v = parseFloat(document.getElementById('fixed-known-input').value) || 0;
+  if (v <= 0) { go(4); return; }
+  fixedFloor = v;
+  var chat = document.getElementById('fixed-chat');
+  go(4);
+}
+
+// ── Fixed costs — calculator ─────────────────────────────────
+function updateCalcTotal() {
+  var total = 0;
+  document.querySelectorAll('#s3c .calc-input').forEach(function(inp) {
+    total += parseFloat(inp.value) || 0;
+  });
+  document.getElementById('calc-total-val').textContent = '$' + total.toLocaleString() + ' / mo';
+  fixedFloor = total;
+}
+function submitFixedCalc() {
+  updateCalcTotal();
+  go(4);
+}
+
+// ── Variable budgets ─────────────────────────────────────────
+function initVarBudgets() {
+  // Pain-selected cats first, then the rest
+  var rest = allVarCats.filter(k => selectedPains.indexOf(k) === -1);
+  varQueue = selectedPains.concat(rest);
+  varIdx = 0;
+  varBudgetsSet = [];
+  document.getElementById('var-chat').innerHTML = '';
+  document.getElementById('var-action').style.display = 'none';
+  runNextVar();
+}
+
+function runNextVar() {
+  if (varIdx >= varQueue.length) { finishVarBudgets(); return; }
+  var key = varQueue[varIdx];
+  var d   = varData[key];
+  if (!d) { varIdx++; runNextVar(); return; }
+
+  var chat   = document.getElementById('var-chat');
+  var action = document.getElementById('var-action');
+  action.style.display = 'none';
+
+  // Progress
+  var pct = 57 + Math.round((varIdx / varQueue.length) * 25);
+  document.getElementById('var-progress').style.width = pct + '%';
+
+  if (varIdx > 0) {
+    var sep = document.createElement('div');
+    sep.style.cssText = 'border-top:1px solid var(--border);margin:2px 0;';
+    chat.appendChild(sep);
+  }
+
+  // Cat label
+  var label = document.createElement('div');
+  label.style.cssText = 'font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:0 2px;';
+  label.textContent = d.emoji + ' ' + d.label;
+  chat.appendChild(label);
+
+  chat.appendChild(dragonMsg(d.line));
+  chat.scrollTop = 9999;
+
+  appendTypingThen(chat, 700, function() {
+    var stepNote = ' <span style="font-size:11px;color:var(--muted)">(' + (varIdx + 1) + ' of ' + varQueue.length + ')</span>';
+    chat.appendChild(dragonMsg('<span class="hi">' + d.ask + '</span>' + stepNote));
+    chat.scrollTop = 9999;
+
+    var idx = varIdx;
+    action.style.display = 'flex';
+    action.innerHTML = buildVarAction(idx, key, d);
+    setTimeout(function() { var inp = document.getElementById('vi' + idx); if(inp) inp.focus(); }, 50);
+  });
+}
+
+function buildVarAction(idx, key, d) {
+  var presetChips = d.presets.map(function(p) {
+    return '<button class="chip" style="font-size:12px;padding:6px 11px;" onclick="usePreset(' + idx + ',\'' + p + '\')">' + p + '</button>';
+  }).join('');
+  return '<div class="chips" style="margin-bottom:8px;">' + presetChips + '</div>' +
+    '<div class="input-row"><input class="text-input" id="vi' + idx + '" placeholder="' + d.ph + '" type="number" min="0"/></div>' +
+    '<button class="btn-primary" style="margin-top:4px" onclick="submitVar(' + idx + ',\'' + key + '\')">Set →</button>' +
+    '<button class="btn-secondary" onclick="skipVar()">Skip this one</button>';
+}
+
+function usePreset(idx, val) {
+  var inp = document.getElementById('vi' + idx);
+  if (inp) { inp.value = val.replace(/[^0-9.]/g,''); inp.focus(); }
+}
+
+function submitVar(idx, key) {
+  var inp = document.getElementById('vi' + idx);
+  var val = inp ? inp.value.trim() : '';
+  if (!val) { skipVar(); return; }
+  var d = varData[key];
+  var chat   = document.getElementById('var-chat');
+  var action = document.getElementById('var-action');
+  chat.appendChild(userMsg('$' + val + '/mo'));
+  action.style.display = 'none';
+  varBudgetsSet.push({ cat: d.label, amt: parseFloat(val) || 0 });
+
+  appendTypingThen(chat, 600, function() {
+    var more = varIdx < varQueue.length - 1;
+    var card = '<div class="budget-card"><div class="budget-row"><span class="budget-lbl">' + d.label + '</span><span class="budget-val">$' + val + '/mo</span></div></div>';
+    chat.appendChild(dragonMsg((more ? 'Set. ' : 'Done. ') + card));
+    varIdx++;
+    setTimeout(runNextVar, more ? 400 : 200);
+  });
+}
+
+function skipVar()    { varIdx++; runNextVar(); }
+function skipVarCat() { varIdx = varQueue.length; finishVarBudgets(); }
+
+function finishVarBudgets() {
+  var chat   = document.getElementById('var-chat');
+  var action = document.getElementById('var-action');
+  document.getElementById('var-progress').style.width = '82%';
+  appendTypingThen(chat, 300, function() {
+    var summary = varBudgetsSet.length > 0
+      ? varBudgetsSet.map(x => '<span class="hi">' + x.cat + '</span>: $' + x.amt + '/mo').join('<br>')
+      : 'No variable budgets set — you can add them anytime.';
+    chat.appendChild(dragonMsg('Here\'s what I\'m guarding so far:<br><br>' + summary + '<br><br>You can adjust any of these from the dashboard.'));
+    action.style.display = 'flex';
+    action.innerHTML = '<button class="btn-primary" onclick="go(5)">Almost done →</button>';
+  });
+}
+
+// ── Income ───────────────────────────────────────────────────
+function submitIncome() {
+  var v = parseFloat(document.getElementById('income-input').value) || 0;
+  if (v <= 0) { go(6); return; }
+  income = v;
+  var chat = document.getElementById('income-chat');
+  chat.appendChild(userMsg('$' + v.toLocaleString() + '/mo'));
+  appendTypingThen(chat, 700, function() {
+    var varTotal = varBudgetsSet.reduce(function(s, x) { return s + x.amt; }, 0);
+    var accountedFor = fixedFloor + varTotal;
+    var left = v - accountedFor;
+    var msg = left > 0
+      ? 'You have about <span class="hi">$' + left.toLocaleString() + '/mo</span> unaccounted for. That\'s what we\'ll keep an eye on.'
+      : 'Your budgets actually exceed your take-home — worth revisiting those numbers.';
+    chat.appendChild(dragonMsg(msg));
+    setTimeout(function() { go(6); }, 1400);
+  });
+}
+
+// ── Summary ──────────────────────────────────────────────────
+function buildSummary() {
+  var varTotal = varBudgetsSet.reduce(function(s, x) { return s + x.amt; }, 0);
+  var card = document.getElementById('summary-card');
+  if (income > 0 || fixedFloor > 0 || varTotal > 0) {
+    card.style.display = 'block';
+    document.getElementById('sum-income').textContent = income > 0 ? '$' + income.toLocaleString() + '/mo' : '—';
+    document.getElementById('sum-fixed').textContent  = fixedFloor > 0 ? '-$' + fixedFloor.toLocaleString() + '/mo' : '—';
+    document.getElementById('sum-var').textContent    = varTotal > 0 ? '-$' + varTotal.toLocaleString() + '/mo' : '—';
+    if (income > 0) {
+      var rem = income - fixedFloor - varTotal;
+      var el = document.getElementById('sum-remaining');
+      el.textContent = '$' + Math.abs(rem).toLocaleString() + '/mo ' + (rem < 0 ? '(over budget)' : 'untracked');
+      el.className = 'sval ' + (rem < 0 ? 'red' : 'accent');
+    } else {
+      document.getElementById('sum-remaining').textContent = '—';
+    }
+  }
+}
+
+// ── Enter key support ────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  var active = document.activeElement;
+  if (active && active.id === 'username-input') { submitUsername(); return; }
+  if (active && active.id === 'log-input') { sendLog(); return; }
+  if (active && active.id === 'fixed-known-input') { submitFixedKnown(); return; }
+  if (active && active.id === 'income-input') { submitIncome(); return; }
+  var viInp = document.getElementById('vi' + varIdx);
+  if (active && viInp && active === viInp) { submitVar(varIdx, varQueue[varIdx]); return; }
+});
+</script>
+</body>
+</html>
