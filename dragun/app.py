@@ -68,6 +68,7 @@ from dragun.services.agent import clear_history as _clear_agent_history
 from dragun.services.budget import BudgetService
 from dragun.services.history import append_turn, clear_history as _clear_conv_history
 from dragun.services.intent import AgentIntent, IntentExtractionService, IntentItem
+from dragun.services.security import sanitize_input, sanitize_receipt_item
 from dragun.services.inventory import InventoryService
 from dragun.services.parser import generate_dragon_reply, parse_text_input_async
 from dragun.storage.base import DragunRepository
@@ -657,6 +658,8 @@ Rules:
         desc = str(raw.get("description") or "").strip()
         if not desc:
             continue
+        # Sanitize OCR'd item names — receipt images can contain arbitrary text.
+        desc = sanitize_receipt_item(desc, user_id=user.user_id)
         normalized = normalize_item_name(desc)
         qty = int(raw.get("quantity") or 1)
         unit_cost = float(raw["unit_cost"]) if raw.get("unit_cost") is not None else None
@@ -786,6 +789,9 @@ async def chat(payload: ChatRequest, request: Request, repo: DragunRepository = 
 
     # Fetch the user's profile so the advisor can personalise responses
     user_profile = repo.get_user_profile(user.user_id)
+
+    # Sanitize before any LLM call — strip injection attempts, log if flagged.
+    text, _ = sanitize_input(text, source="chat", user_id=user.user_id)
 
     # Gemini extraction layer: cheap flash-lite model, JSON only.
     # History injected for pronoun/reference resolution across turns.

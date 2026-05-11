@@ -85,6 +85,88 @@ class AgentIntent(BaseModel):
     raw_input: str = ""
 
 
+# ---------------------------------------------------------------------------
+# Intent validation
+# ---------------------------------------------------------------------------
+
+from typing import Callable
+
+INTENT_REQUIRED_FIELDS: dict[str, list[str]] = {
+    "log_purchase":           ["items"],
+    "set_inventory_baseline": ["items"],
+    "remove_items":           ["items"],
+    "create_budget":          ["budget"],
+    "create_constraint":      ["constraint"],
+    "purchase_advice":        ["items"],
+    "update_item_cost":       ["items"],
+    "retag_item":             ["items"],
+}
+
+INTENT_FIELD_VALIDATORS: dict[str, Callable] = {
+    "log_purchase": lambda i: len(i.items) > 0 and all(
+        item.item_normalized and item.quantity > 0 for item in i.items
+    ),
+    "create_budget": lambda i: (
+        i.budget is not None
+        and i.budget.amount is not None
+        and i.budget.amount > 0
+    ),
+    "create_constraint": lambda i: (
+        i.constraint is not None
+        and i.constraint.threshold_value is not None
+        and i.constraint.threshold_value > 0
+    ),
+}
+
+
+def _clarification_for(intent: str, missing: str) -> str:
+    clarifications: dict[tuple[str, str], str] = {
+        ("log_purchase", "items"):           "What exactly did you buy?",
+        ("create_budget", "budget"):         "How much should I guard, and for which category?",
+        ("create_constraint", "constraint"): "What limit should I set, and on what?",
+        ("purchase_advice", "items"):        "What are you thinking of buying?",
+    }
+    return clarifications.get((intent, missing), "Can you be more specific?")
+
+
+def validate_intent(intent: AgentIntent) -> AgentIntent:
+    """Validate internal consistency of an extracted intent.
+
+    Checks that all required fields are present and non-empty, then runs any
+    per-intent field validator. Returns the intent unchanged if valid, or
+    downgrades it to ``clarify`` with a clarifying question if not.
+
+    This runs as the final step inside IntentExtractionService.extract().
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    required = INTENT_REQUIRED_FIELDS.get(intent.intent, [])
+    for field_name in required:
+        value = getattr(intent, field_name, None)
+        if not value:
+            logger.info(
+                "Intent validation failed: %s missing required field %s",
+                intent.intent, field_name,
+            )
+            return intent.model_copy(update={
+                "intent": "clarify",
+                "needs_clarification": True,
+                "clarifying_question": _clarification_for(intent.intent, field_name),
+            })
+
+    validator = INTENT_FIELD_VALIDATORS.get(intent.intent)
+    if validator and not validator(intent):
+        logger.info("Intent field validator failed for intent: %s", intent.intent)
+        return intent.model_copy(update={
+            "intent": "clarify",
+            "needs_clarification": True,
+            "clarifying_question": _clarification_for(intent.intent, "details"),
+        })
+
+    return intent
+
+
 class IntentExtractionService:
     """Messy input -> strict JSON intent.
 
@@ -101,9 +183,9 @@ class IntentExtractionService:
         if settings.google_api_key:
             extracted = await self._extract_with_gemini(text, user_id=user_id)
             if extracted:
-                return extracted
+                return validate_intent(extracted)
 
-        return fallback_extract(text)
+        return validate_intent(fallback_extract(text))
 
     async def _extract_with_gemini(self, text: str, *, user_id: str | None = None) -> AgentIntent | None:
         from dragun.services.history import get_user_turns
