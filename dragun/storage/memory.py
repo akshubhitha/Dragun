@@ -13,6 +13,7 @@ from dragun.models import (
     EventTag,
     Tag,
     User,
+    UserProfile,
 )
 from dragun.storage.base import DragunRepository
 
@@ -31,6 +32,7 @@ class InMemoryRepository(DragunRepository):
         self.event_tags: dict[str, list[dict]] = defaultdict(list)
         self.budgets: dict[str, Budget] = {}
         self.constraints: dict[str, Constraint] = {}
+        self.user_profiles: dict[str, UserProfile] = {}
 
     def create_user(self, user: User) -> User:
         normalized = user.handle.strip().lower()
@@ -221,7 +223,19 @@ class InMemoryRepository(DragunRepository):
             user.email = None
             user.monthly_income = 0.0
             user.fixed_costs_floor = 0.0
+            # Strip user profile too
+            self.user_profiles.pop(user_id, None)
             # Don't re-add to lookup indexes — account is gone, data stays
+
+    def get_user_profile(self, user_id: str) -> UserProfile | None:
+        with self._lock:
+            profile = self.user_profiles.get(user_id)
+            return deepcopy(profile) if profile else None
+
+    def upsert_user_profile(self, profile: UserProfile) -> UserProfile:
+        with self._lock:
+            self.user_profiles[profile.user_id] = deepcopy(profile)
+            return deepcopy(profile)
 
     def delete_user_data(self, user_id: str) -> None:
         with self._lock:
@@ -230,6 +244,7 @@ class InMemoryRepository(DragunRepository):
                 self.users_by_handle.pop(user.handle, None)
                 if user.email:
                     self.users_by_email.pop(user.email.strip().lower(), None)
+            self.user_profiles.pop(user_id, None)
             event_ids = [
                 event_id for event_id, event in self.events.items() if event.user_id == user_id
             ]

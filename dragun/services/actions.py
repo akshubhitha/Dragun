@@ -22,6 +22,8 @@ from dragun.models import (
     InputSource,
     InventoryRow,
     User,
+    UserProfile,
+    utc_now,
 )
 from dragun.services.catalog import infer_lifespan_type, suggest_tags
 from dragun.services.intent import AgentIntent, IntentItem, parsed_input_from_intent
@@ -52,6 +54,8 @@ class BackendActionRouter:
     inventory_service: "InventoryService"
     budget_service: "BudgetService"
     advisor: "AdvisorResponseService"
+    # Set once per request in handle(); read by private methods via self._profile
+    _profile: UserProfile | None = field(default=None, init=False, repr=False)
 
     async def handle(
         self,
@@ -59,7 +63,11 @@ class BackendActionRouter:
         intent: AgentIntent,
         *,
         input_source: InputSource = InputSource.TEXT,
+        user_profile: UserProfile | None = None,
     ) -> ActionResult:
+        # Store profile for this request so private methods can pass it to advisor
+        self._profile = user_profile
+
         if intent.intent == "log_purchase":
             return await self._log_purchase(user, intent, input_source)
         if intent.intent == "set_inventory_baseline":
@@ -80,6 +88,8 @@ class BackendActionRouter:
             return await self._retag_item(user, intent)
         if intent.intent == "purchase_advice":
             return await self._purchase_advice(user, intent)
+        if intent.intent == "update_profile":
+            return await self._update_profile(user, intent)
         if intent.intent == "clarify" or intent.needs_clarification:
             return ActionResult(
                 reply=intent.clarifying_question or "What exactly should I guard or log?",
@@ -106,7 +116,7 @@ class BackendActionRouter:
             "constraint_alerts": [alert.message for alert in evaluation.constraint_alerts],
             "velocity_notes": velocity_notes,
         }
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or _purchase_reply(
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or _purchase_reply(
             inventory, budgets, evaluation.constraint_alerts, velocity_notes
         )
         return ActionResult(reply, intent, events, inventory, budgets, evaluation.constraint_alerts, facts=facts)
@@ -119,7 +129,7 @@ class BackendActionRouter:
         inventory = self.inventory_service.query_inventory(user.user_id)
         budgets = self.budget_service.get_budget_statuses(user.user_id)
         facts = {"action": "baseline_set", "inventory": _inventory_facts(inventory)}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or f"Baseline marked. You now have {_owned_text(inventory)}."
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or f"Baseline marked. You now have {_owned_text(inventory)}."
         return ActionResult(reply, intent, events, inventory, budgets, facts=facts)
 
     async def _remove_items(self, user: User, intent: AgentIntent) -> ActionResult:
@@ -147,7 +157,7 @@ class BackendActionRouter:
         inventory = self.inventory_service.query_inventory(user.user_id)
         budgets = self.budget_service.get_budget_statuses(user.user_id)
         facts = {"action": "removed_items", "items": [{"item": e.item_normalized, "quantity": e.quantity} for e in events]}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or f"Removed. The hoard now shows {_owned_text(inventory)}."
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or f"Removed. The hoard now shows {_owned_text(inventory)}."
         return ActionResult(reply, intent, events, inventory, budgets, facts=facts)
 
     async def _query_inventory(self, user: User, intent: AgentIntent) -> ActionResult:
@@ -159,7 +169,7 @@ class BackendActionRouter:
             inventory = [row for row in inventory if tag_set.intersection(row.tags)]
         budgets = self.budget_service.get_budget_statuses(user.user_id)
         facts = {"action": "query_inventory", "inventory": _inventory_facts(inventory)}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or (
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or (
             f"In the hoard: {_owned_text(inventory)}." if inventory else "The lair is empty for that query."
         )
         return ActionResult(reply, intent, inventory=inventory, budgets=budgets, facts=facts)
@@ -179,7 +189,7 @@ class BackendActionRouter:
         status = self.budget_service.get_budget_status(budget)
         budgets = self.budget_service.get_budget_statuses(user.user_id)
         facts = {"action": "budget_created", "budget": status.model_dump(mode="json")}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or (
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or (
             f"Marked. {status.budget_scope} has ${status.amount_remaining:.2f} left this period."
         )
         return ActionResult(reply, intent, budgets=budgets, facts=facts)
@@ -190,7 +200,7 @@ class BackendActionRouter:
         if scope:
             budgets = [budget for budget in budgets if scope in budget.budget_scope]
         facts = {"action": "query_budget", "budgets": _budget_facts(budgets)}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or (
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or (
             "; ".join(f"{b.budget_scope}: ${b.amount_remaining:.2f} left" for b in budgets)
             if budgets
             else "No budgets are guarding this category yet."
@@ -212,7 +222,7 @@ class BackendActionRouter:
         )
         facts = {"action": "constraint_created", "constraint": constraint.model_dump(mode="json")}
         item = constraint.item_normalized or ", ".join(constraint.scope_tags) or "that scope"
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or (
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or (
             f"Guard set. I will flag {item} when it crosses {constraint.threshold_value:g}."
         )
         return ActionResult(reply, intent, constraints=[], facts=facts)
@@ -242,7 +252,7 @@ class BackendActionRouter:
         self.inventory_service.repository.create_event(event, item.tags or suggest_tags(item.item_normalized))
         inventory = self.inventory_service.query_inventory(user.user_id)
         facts = {"action": "cost_updated", "item": item.item_normalized, "unit_cost": unit_cost}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or f"Price updated. {item.item_normalized} is now marked at ${unit_cost:.2f}."
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or f"Price updated. {item.item_normalized} is now marked at ${unit_cost:.2f}."
         return ActionResult(reply, intent, [event], inventory, self.budget_service.get_budget_statuses(user.user_id), facts=facts)
 
     async def _retag_item(self, user: User, intent: AgentIntent) -> ActionResult:
@@ -252,7 +262,7 @@ class BackendActionRouter:
         updated = self.inventory_service.retag_item(user.user_id, item.item_normalized, item.tags)
         inventory = self.inventory_service.query_inventory(user.user_id)
         facts = {"action": "retagged", "item": item.item_normalized, "tags": item.tags, "events_updated": updated}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or f"Retagged {item.item_normalized} as {', '.join(item.tags)}."
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or f"Retagged {item.item_normalized} as {', '.join(item.tags)}."
         return ActionResult(reply, intent, inventory=inventory, budgets=self.budget_service.get_budget_statuses(user.user_id), facts=facts)
 
     async def _purchase_advice(self, user: User, intent: AgentIntent) -> ActionResult:
@@ -267,14 +277,50 @@ class BackendActionRouter:
             "reason": decision.get("reason"),
             "inventory": _inventory_facts(inventory),
         }
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or decision_reply(decision)
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or decision_reply(decision)
         return ActionResult(reply, intent, inventory=inventory, budgets=budgets, decision_band=decision["band"], facts=facts)
+
+    async def _update_profile(self, user: User, intent: AgentIntent) -> ActionResult:
+        repo = self.inventory_service.repository
+        pu = intent.profile_update
+        # Merge with existing profile (or create a blank one)
+        existing = repo.get_user_profile(user.user_id)
+        if existing:
+            new_profile = existing.model_copy(deep=True)
+        else:
+            new_profile = UserProfile(user_id=user.user_id)
+
+        if pu:
+            if pu.pain_points:
+                merged = list({*new_profile.pain_points, *pu.pain_points})
+                new_profile.pain_points = merged
+            if pu.primary_goal:
+                new_profile.primary_goal = pu.primary_goal
+            if pu.preferred_tone:
+                new_profile.preferred_tone = pu.preferred_tone
+
+        new_profile.updated_at = utc_now()
+        saved = repo.upsert_user_profile(new_profile)
+        self._profile = saved  # advisor will use the freshly saved profile
+
+        facts = {
+            "action": "profile_updated",
+            "pain_points": saved.pain_points,
+            "primary_goal": saved.primary_goal,
+            "preferred_tone": saved.preferred_tone,
+        }
+        inventory = self.inventory_service.query_inventory(user.user_id)
+        budgets = self.budget_service.get_budget_statuses(user.user_id)
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or (
+            "Noted. I'll keep that in mind going forward."
+        )
+        return ActionResult(reply, intent, inventory=inventory, budgets=budgets, facts=facts)
 
     async def _casual(self, user: User, intent: AgentIntent) -> ActionResult:
         inventory = self.inventory_service.query_inventory(user.user_id)
         budgets = self.budget_service.get_budget_statuses(user.user_id)
         facts = {"action": "casual", "inventory_count": len(inventory), "budgets": _budget_facts(budgets)}
-        reply = await self.advisor.reply(intent.raw_input, intent, facts) or "I am here. Tell me what enters the hoard, or ask if the coins can spare it."
+        reply = await self.advisor.reply(intent.raw_input, intent, facts, user_profile=self._profile) or "I am here. Tell me what enters the hoard, or ask if the coins can spare it."
         return ActionResult(reply, intent, inventory=inventory, budgets=budgets, facts=facts)
 
     async def _clarify(self, user: User, intent: AgentIntent, question: str) -> ActionResult:
@@ -290,11 +336,31 @@ class BackendActionRouter:
 class AdvisorResponseService:
     """Facts -> Dragun voice. Does not query or compute backend state."""
 
-    async def reply(self, user_message: str, intent: AgentIntent, facts: dict[str, Any]) -> str | None:
+    async def reply(
+        self,
+        user_message: str,
+        intent: AgentIntent,
+        facts: dict[str, Any],
+        *,
+        user_profile: "UserProfile | None" = None,
+    ) -> str | None:
         settings = get_settings()
         if not settings.google_api_key:
             return None
         context = get_instruction_retriever().context(user_message, limit=2)
+
+        profile_section = ""
+        if user_profile:
+            parts: list[str] = []
+            if user_profile.primary_goal:
+                parts.append(f"Primary goal: {user_profile.primary_goal}")
+            if user_profile.pain_points:
+                parts.append(f"Known pain points: {', '.join(user_profile.pain_points)}")
+            if user_profile.preferred_tone and user_profile.preferred_tone != "balanced":
+                parts.append(f"Preferred tone: {user_profile.preferred_tone}")
+            if parts:
+                profile_section = "User profile:\n" + "\n".join(parts)
+
         prompt = f"""
 You are Dragun's advisor voice. Python already did the database work.
 
@@ -304,9 +370,12 @@ Rules:
 - Never shame. Do nudge when the decision band is orange/red.
 - Keep it to 1-3 concise sentences.
 - If facts.action is casual, answer warmly in character.
+- Adapt your tone and advice to the user profile if one is provided.
 
 Relevant voice guidance:
 {context or "No extra context."}
+
+{profile_section}
 
 User said: {user_message}
 Extracted intent: {intent.intent}

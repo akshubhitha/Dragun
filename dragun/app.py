@@ -58,6 +58,8 @@ from dragun.models import (
     RegisterRequest,
     SendOTPRequest,
     User,
+    UserProfile,
+    UserProfileUpdateRequest,
     UserPublic,
     VerifyOTPRequest,
 )
@@ -387,6 +389,48 @@ def update_profile(
     return UserPublic.from_user(user).model_dump(mode="json")
 
 
+@app.patch("/api/users/{user_id}/user-profile")
+def update_user_profile(
+    user_id: str,
+    payload: UserProfileUpdateRequest,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    """Create or update the user's personality/goals profile (pain points, primary goal, tone)."""
+    require_user_session(repo, user_id, request)
+    existing = repo.get_user_profile(user_id)
+    if existing:
+        profile = existing.model_copy(deep=True)
+    else:
+        profile = UserProfile(user_id=user_id)
+
+    if payload.pain_points is not None:
+        profile.pain_points = payload.pain_points
+    if payload.primary_goal is not None:
+        profile.primary_goal = payload.primary_goal
+    if payload.preferred_tone is not None:
+        profile.preferred_tone = payload.preferred_tone
+    if payload.onboarding_completed is not None:
+        profile.onboarding_completed = payload.onboarding_completed
+
+    from dragun.models import utc_now
+    profile.updated_at = utc_now()
+    saved = repo.upsert_user_profile(profile)
+    return saved.model_dump(mode="json")
+
+
+@app.get("/api/users/{user_id}/user-profile")
+def get_user_profile(
+    user_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    """Fetch the user's profile (or a blank default if not yet created)."""
+    require_user_session(repo, user_id, request)
+    profile = repo.get_user_profile(user_id) or UserProfile(user_id=user_id)
+    return profile.model_dump(mode="json")
+
+
 @app.delete("/api/users/{user_id}")
 def delete_account(
     user_id: str,
@@ -542,11 +586,16 @@ async def chat(payload: ChatRequest, request: Request, repo: DragunRepository = 
     if not text:
         raise HTTPException(status_code=400, detail="Say what is entering or leaving the hoard.")
 
+    # Fetch the user's profile so the advisor can personalise responses
+    user_profile = repo.get_user_profile(user.user_id)
+
     # Gemini now acts as a JSON extraction layer only. Python validates the
     # intent, executes all database work, computes decisions, then optionally
     # asks Gemini to phrase the final advice from compact backend facts.
     extracted_intent = await intent_service.extract(text)
-    result = await action_router.handle(user, extracted_intent, input_source=payload.input_source)
+    result = await action_router.handle(
+        user, extracted_intent, input_source=payload.input_source, user_profile=user_profile
+    )
     return ChatResponse(
         reply=result.reply,
         intent=result.intent.model_dump(mode="json"),

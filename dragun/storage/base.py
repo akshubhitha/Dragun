@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import date
 from typing import Iterable
 
-from dragun.models import Budget, Constraint, Event, Tag, User
+from dragun.models import Budget, Constraint, Event, Tag, User, UserProfile
 
 
 class DragunRepository(ABC):
@@ -85,6 +85,16 @@ class DragunRepository(ABC):
     @abstractmethod
     def anonymize_user(self, user_id: str) -> None:
         """Strip PII from the user record but keep all spending data as synthetic."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_user_profile(self, user_id: str) -> UserProfile | None:
+        """Return the UserProfile for a user, or None if not yet created."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def upsert_user_profile(self, profile: UserProfile) -> UserProfile:
+        """Create or fully replace the UserProfile for a user."""
         raise NotImplementedError
 
     @abstractmethod

@@ -5,7 +5,7 @@ from typing import Any, Iterable
 
 from google.cloud import firestore
 
-from dragun.models import Budget, Constraint, Event, EventTag, Tag, User
+from dragun.models import Budget, Constraint, Event, EventTag, Tag, User, UserProfile
 from dragun.storage.base import DragunRepository
 
 
@@ -250,6 +250,18 @@ class FirestoreRepository(DragunRepository):
             "monthly_income": 0.0,
             "fixed_costs_floor": 0.0,
         })
+        # Remove user profile (contains pain points / goals which are PII-adjacent)
+        self.client.collection("user_profiles").document(user_id).delete()
+
+    def get_user_profile(self, user_id: str) -> UserProfile | None:
+        doc = self.client.collection("user_profiles").document(user_id).get()
+        return UserProfile(**doc.to_dict()) if doc.exists else None
+
+    def upsert_user_profile(self, profile: UserProfile) -> UserProfile:
+        self.client.collection("user_profiles").document(profile.user_id).set(
+            profile.model_dump(mode="python")
+        )
+        return profile
 
     def delete_user_data(self, user_id: str) -> None:
         for collection_name, field_name in (

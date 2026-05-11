@@ -290,6 +290,26 @@ class ConstraintCreateRequest(BaseModel):
     message_template: str | None = None
 
 
+class UserProfile(BaseModel):
+    """Persistent personality + goal context passed to the agent on every turn."""
+
+    user_id: str
+    # Set during onboarding; can grow over time as agent detects shifts
+    pain_points: list[str] = Field(default_factory=list)
+    primary_goal: str | None = None
+    # "warm" | "direct" | "analytical" | "balanced"
+    preferred_tone: str = "balanced"
+    onboarding_completed: bool = False
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class UserProfileUpdateRequest(BaseModel):
+    pain_points: list[str] | None = None
+    primary_goal: str | None = None
+    preferred_tone: str | None = None
+    onboarding_completed: bool | None = None
+
+
 class ExportResponse(BaseModel):
     user: User
     events: list[Event]

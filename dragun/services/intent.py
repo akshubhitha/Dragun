@@ -26,6 +26,7 @@ IntentName = Literal[
     "update_item_cost",
     "retag_item",
     "purchase_advice",
+    "update_profile",
     "casual",
     "clarify",
     "unknown",
@@ -63,6 +64,12 @@ class QueryIntent(BaseModel):
     scope: str | None = None
 
 
+class ProfileUpdateIntent(BaseModel):
+    pain_points: list[str] = Field(default_factory=list)
+    primary_goal: str | None = None
+    preferred_tone: str | None = None  # "warm" | "direct" | "analytical" | "balanced"
+
+
 class AgentIntent(BaseModel):
     intent: IntentName
     confidence: float = Field(default=0.5, ge=0, le=1)
@@ -71,6 +78,7 @@ class AgentIntent(BaseModel):
     budget: BudgetIntent | None = None
     constraint: ConstraintIntent | None = None
     query: QueryIntent | None = None
+    profile_update: ProfileUpdateIntent | None = None
     needs_clarification: bool = False
     clarifying_question: str | None = None
     raw_input: str = ""
@@ -117,7 +125,7 @@ Relevant operating context:
 
 Schema shape:
 {{
-  "intent": "log_purchase|set_inventory_baseline|remove_items|query_inventory|create_budget|query_budget|create_constraint|update_item_cost|retag_item|purchase_advice|casual|clarify|unknown",
+  "intent": "log_purchase|set_inventory_baseline|remove_items|query_inventory|create_budget|query_budget|create_constraint|update_item_cost|retag_item|purchase_advice|update_profile|casual|clarify|unknown",
   "confidence": 0.0,
   "items": [
     {{
@@ -135,9 +143,12 @@ Schema shape:
   "budget": {{"scope": "coffee", "amount": null, "period_type": "monthly"}},
   "constraint": {{"constraint_type": "inventory_cap", "item_normalized": "shirt", "scope_tags": [], "operator": "count_exceeds", "threshold_value": 10}},
   "query": {{"item_normalized": null, "tags": [], "scope": null}},
+  "profile_update": {{"pain_points": [], "primary_goal": null, "preferred_tone": null}},
   "needs_clarification": false,
   "clarifying_question": null
 }}
+
+When to use update_profile: user says something that reveals a shift in their financial goal (e.g. "I'm trying to save more", "my priority is paying off debt"), mentions a pain point (e.g. "I always overspend on food"), or expresses a preference for how Dragun should talk to them.
 
 User input: {text}
 """
@@ -256,6 +267,10 @@ def _intent_from_payload(raw_input: str, payload: dict[str, Any]) -> AgentIntent
             }
         )
     payload["items"] = normalized_items
+    # Normalise profile_update — strip null-only dicts
+    pu = payload.get("profile_update")
+    if isinstance(pu, dict) and not any(pu.values()):
+        payload["profile_update"] = None
     return AgentIntent(**payload)
 
 

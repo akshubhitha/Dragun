@@ -718,6 +718,14 @@ async function openHoard() {
         body: JSON.stringify(profileBody)
       });
     }
+    // Save pain points + mark onboarding complete in the user profile doc
+    var userProfileBody = { onboarding_completed: true };
+    if (selectedPains.length > 0) userProfileBody.pain_points = selectedPains;
+    await fetch('/api/users/' + userId + '/user-profile', {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify(userProfileBody)
+    });
     // Save each variable budget
     for (var i = 0; i < varBudgetsSet.length; i++) {
       var b = varBudgetsSet[i];
