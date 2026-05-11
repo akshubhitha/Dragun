@@ -91,22 +91,31 @@ class IntentExtractionService:
     query the database, or compute derived state.
     """
 
-    async def extract(self, raw_input: str) -> AgentIntent:
+    async def extract(self, raw_input: str, *, user_id: str | None = None) -> AgentIntent:
         text = raw_input.strip()
         if not text:
             return AgentIntent(intent="unknown", raw_input=raw_input)
 
         settings = get_settings()
         if settings.google_api_key:
-            extracted = await self._extract_with_gemini(text)
+            extracted = await self._extract_with_gemini(text, user_id=user_id)
             if extracted:
                 return extracted
 
         return fallback_extract(text)
 
-    async def _extract_with_gemini(self, text: str) -> AgentIntent | None:
+    async def _extract_with_gemini(self, text: str, *, user_id: str | None = None) -> AgentIntent | None:
+        from dragun.services.history import get_user_turns
         settings = get_settings()
         context = get_instruction_retriever().context(text, limit=2)
+
+        # Inject recent user messages to resolve pronouns and follow-up references
+        history_section = ""
+        if user_id:
+            recent = get_user_turns(user_id, max_turns=3)
+            if recent:
+                history_section = f"\nRecent user messages (for context only — resolve references like 'those', 'them', 'it'):\n{recent}\n"
+
         prompt = f"""
 You are Dragun's extraction layer. Convert messy user input into JSON only.
 
@@ -119,7 +128,7 @@ Rules:
 - If required fields are missing, set intent "clarify" and provide one clarifying_question.
 - Normalize obvious item names and choose compact lowercase tags.
 - Use backend facts only after Python queries them; do not invent counts or budget values.
-
+{history_section}
 Relevant operating context:
 {context or "No extra context."}
 
@@ -155,7 +164,7 @@ User input: {text}
         try:
             client = genai.Client(api_key=settings.google_api_key)
             response = await client.aio.models.generate_content(
-                model=settings.gemini_model,
+                model=settings.extraction_model,  # cheap flash-lite — JSON only, no voice
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",

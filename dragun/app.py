@@ -14,7 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,7 +44,6 @@ def _init_phoenix_tracing(api_key: str | None) -> None:
 
 from dragun.agents import root_agent
 from dragun.config import Settings, get_settings
-from dragun.services.agent import clear_history
 from dragun.models import (
     BudgetCreateRequest,
     ChatRequest,
@@ -52,6 +51,7 @@ from dragun.models import (
     ConstraintCreateRequest,
     ConstraintOperator,
     ConstraintType,
+    InputSource,
     LoginRequest,
     PeriodType,
     PurchaseEvaluation,
@@ -64,13 +64,21 @@ from dragun.models import (
     VerifyOTPRequest,
 )
 from dragun.services.actions import AdvisorResponseService, BackendActionRouter
+from dragun.services.agent import clear_history as _clear_agent_history
 from dragun.services.budget import BudgetService
-from dragun.services.intent import IntentExtractionService
+from dragun.services.history import append_turn, clear_history as _clear_conv_history
+from dragun.services.intent import AgentIntent, IntentExtractionService, IntentItem
 from dragun.services.inventory import InventoryService
 from dragun.services.parser import generate_dragon_reply, parse_text_input_async
 from dragun.storage.base import DragunRepository
 from dragun.storage.firestore import FirestoreRepository
 from dragun.storage.memory import InMemoryDragunRepository
+
+
+def clear_history(user_id: str) -> None:
+    """Clear both agentic loop history and deterministic conversation history."""
+    _clear_agent_history(user_id)
+    _clear_conv_history(user_id)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -579,6 +587,195 @@ def logout_user(user_id: str, request: Request, repo: DragunRepository = Depends
     return {"status": "logged_out"}
 
 
+@app.post("/api/users/{user_id}/receipt", response_model=ChatResponse)
+async def upload_receipt(
+    user_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    repo: DragunRepository = Depends(get_repo),
+) -> ChatResponse:
+    """Upload a receipt image. Gemini Vision extracts line items and logs them to the hoard."""
+    user = require_user_session(repo, user_id, request)
+    settings = get_settings()
+    if not settings.google_api_key:
+        raise HTTPException(status_code=503, detail="Vision processing requires a Google API key.")
+
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Empty file uploaded.")
+
+    mime_type = file.content_type or "image/jpeg"
+
+    from google import genai
+    from google.genai import types as gtypes
+    from dragun.services.catalog import infer_lifespan_type, normalize_item_name, suggest_tags
+
+    try:
+        client = genai.Client(api_key=settings.google_api_key)
+        response = await client.aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=[
+                gtypes.Part(inline_data=gtypes.Blob(mime_type=mime_type, data=image_bytes)),
+                gtypes.Part(text="""Extract every purchasable line item from this receipt as JSON.
+
+Return exactly:
+{
+  "store_name": "store name or null",
+  "total": 0.00,
+  "items": [
+    {"description": "item name", "quantity": 1, "unit_cost": 0.00, "total_cost": 0.00}
+  ]
+}
+
+Rules:
+- Omit tax lines, tips, subtotals, and payment method lines.
+- If quantity is not shown, default to 1.
+- If only a total is shown with no per-item prices, distribute evenly.
+- Normalize item descriptions to plain English (no all-caps, no product codes)."""),
+            ],
+            config=gtypes.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.0,
+                max_output_tokens=1200,
+            ),
+        )
+        payload = json.loads(response.text or "{}")
+    except Exception as exc:
+        logger.error("Receipt OCR failed for user %s: %s", user_id, exc)
+        raise HTTPException(status_code=422, detail="Could not read the receipt. Try a clearer photo.")
+
+    raw_items = payload.get("items") or []
+    if not raw_items:
+        raise HTTPException(status_code=422, detail="No items found on this receipt. Try a clearer photo.")
+
+    store = payload.get("store_name") or "receipt"
+    transaction_total = payload.get("total")
+
+    intent_items: list[IntentItem] = []
+    for raw in raw_items:
+        desc = str(raw.get("description") or "").strip()
+        if not desc:
+            continue
+        normalized = normalize_item_name(desc)
+        qty = int(raw.get("quantity") or 1)
+        unit_cost = float(raw["unit_cost"]) if raw.get("unit_cost") is not None else None
+        total_cost = float(raw["total_cost"]) if raw.get("total_cost") is not None else None
+        if total_cost is None and unit_cost is not None:
+            total_cost = round(unit_cost * qty, 2)
+        intent_items.append(
+            IntentItem(
+                name_raw=desc,
+                item_normalized=normalized,
+                quantity=qty,
+                unit_cost=unit_cost,
+                total_cost=total_cost,
+                estimated_total_cost=total_cost,
+                tags=suggest_tags(normalized),
+                lifespan_type=infer_lifespan_type(normalized),
+            )
+        )
+
+    if not intent_items:
+        raise HTTPException(status_code=422, detail="Could not parse items from this receipt.")
+
+    receipt_intent = AgentIntent(
+        intent="log_purchase",
+        confidence=1.0,
+        items=intent_items,
+        transaction_total=transaction_total,
+        raw_input=f"Receipt from {store}",
+    )
+    user_profile = repo.get_user_profile(user.user_id)
+    result = await action_router.handle(
+        user, receipt_intent, input_source=InputSource.RECEIPT, user_profile=user_profile
+    )
+    append_turn(user.user_id, f"[receipt: {store}]", result.reply)
+    return ChatResponse(
+        reply=result.reply,
+        intent=result.intent.model_dump(mode="json"),
+        decision_band=result.decision_band,
+        events=result.events,
+        inventory=result.inventory,
+        budgets=result.budgets,
+        constraints=result.constraints,
+    )
+
+
+@app.post("/api/users/{user_id}/barcode", response_model=ChatResponse)
+async def scan_barcode(
+    user_id: str,
+    body: dict,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> ChatResponse:
+    """Resolve a UPC/EAN barcode to a product name and log it to the hoard."""
+    user = require_user_session(repo, user_id, request)
+    barcode = str(body.get("barcode") or "").strip()
+    if not barcode:
+        raise HTTPException(status_code=400, detail="Barcode value is required.")
+
+    from dragun.services.catalog import infer_lifespan_type, normalize_item_name, suggest_tags
+
+    # Look up the product name via Open Food Facts (free, no key needed)
+    product_name: str | None = None
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json",
+                headers={"User-Agent": "Dragun/1.0 (https://mydragun.com)"},
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == 1:
+                product = data.get("product") or {}
+                product_name = (
+                    product.get("product_name_en")
+                    or product.get("product_name")
+                    or product.get("generic_name_en")
+                    or product.get("generic_name")
+                    or ""
+                ).strip() or None
+    except Exception:
+        pass  # fall through to barcode-as-name fallback
+
+    if not product_name:
+        # Unknown barcode — return a clear message so the frontend can prompt the user
+        raise HTTPException(
+            status_code=404,
+            detail=f"Product not found for barcode {barcode}. Enter the item name manually.",
+        )
+
+    normalized = normalize_item_name(product_name)
+    barcode_intent = AgentIntent(
+        intent="log_purchase",
+        confidence=0.95,
+        items=[
+            IntentItem(
+                name_raw=product_name,
+                item_normalized=normalized,
+                quantity=1,
+                tags=suggest_tags(normalized),
+                lifespan_type=infer_lifespan_type(normalized),
+            )
+        ],
+        raw_input=f"Barcode scan: {product_name}",
+    )
+    user_profile = repo.get_user_profile(user.user_id)
+    result = await action_router.handle(
+        user, barcode_intent, input_source=InputSource.BARCODE, user_profile=user_profile
+    )
+    append_turn(user.user_id, f"[barcode: {product_name}]", result.reply)
+    return ChatResponse(
+        reply=result.reply,
+        intent=result.intent.model_dump(mode="json"),
+        decision_band=result.decision_band,
+        events=result.events,
+        inventory=result.inventory,
+        budgets=result.budgets,
+        constraints=result.constraints,
+    )
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest, request: Request, repo: DragunRepository = Depends(get_repo)) -> ChatResponse:
     user = require_user_session(repo, payload.user_id, request)
@@ -589,13 +786,14 @@ async def chat(payload: ChatRequest, request: Request, repo: DragunRepository = 
     # Fetch the user's profile so the advisor can personalise responses
     user_profile = repo.get_user_profile(user.user_id)
 
-    # Gemini now acts as a JSON extraction layer only. Python validates the
-    # intent, executes all database work, computes decisions, then optionally
-    # asks Gemini to phrase the final advice from compact backend facts.
-    extracted_intent = await intent_service.extract(text)
+    # Gemini extraction layer: cheap flash-lite model, JSON only.
+    # History injected for pronoun/reference resolution across turns.
+    extracted_intent = await intent_service.extract(text, user_id=user.user_id)
     result = await action_router.handle(
         user, extracted_intent, input_source=payload.input_source, user_profile=user_profile
     )
+    # Persist this turn so the next message has conversational context
+    append_turn(user.user_id, text, result.reply)
     return ChatResponse(
         reply=result.reply,
         intent=result.intent.model_dump(mode="json"),
