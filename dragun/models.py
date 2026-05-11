@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -303,11 +304,44 @@ class UserProfile(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+_PROFILE_TEXT_MAX = 200   # chars per free-text field
+_PAIN_POINT_MAX = 80      # chars per individual pain point
+_PAIN_POINTS_MAX_COUNT = 10
+_ALLOWED_TONES = {"warm", "direct", "analytical", "balanced"}
+_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")  # strip control characters
+
+
+def _sanitize(value: str, max_len: int) -> str:
+    """Strip control characters and enforce a length cap."""
+    return _CTRL_RE.sub("", value).strip()[:max_len]
+
+
 class UserProfileUpdateRequest(BaseModel):
     pain_points: list[str] | None = None
     primary_goal: str | None = None
     preferred_tone: str | None = None
     onboarding_completed: bool | None = None
+
+    @field_validator("primary_goal", mode="before")
+    @classmethod
+    def _clean_goal(cls, v: str | None) -> str | None:
+        return _sanitize(v, _PROFILE_TEXT_MAX) if v else None
+
+    @field_validator("pain_points", mode="before")
+    @classmethod
+    def _clean_pains(cls, v: list | None) -> list | None:
+        if v is None:
+            return None
+        cleaned = [_sanitize(str(p), _PAIN_POINT_MAX) for p in v if str(p).strip()]
+        return cleaned[:_PAIN_POINTS_MAX_COUNT]
+
+    @field_validator("preferred_tone", mode="before")
+    @classmethod
+    def _clean_tone(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = str(v).strip().lower()
+        return v if v in _ALLOWED_TONES else "balanced"
 
 
 class ExportResponse(BaseModel):

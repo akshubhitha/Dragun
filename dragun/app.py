@@ -299,7 +299,8 @@ async def send_otp(request: SendOTPRequest, repo: DragunRepository = Depends(get
     if not sent and settings.resend_api_key:
         raise HTTPException(status_code=500, detail="Failed to send code. Try again in a moment.")
 
-    return {"status": "otp_sent", "is_new_user": is_new, "email": email}
+    # Do not reveal is_new_user — leaks whether the email is registered (enumeration risk)
+    return {"status": "otp_sent", "email": email}
 
 
 @app.post("/api/auth/verify-otp")
