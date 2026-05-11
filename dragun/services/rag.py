@@ -238,7 +238,10 @@ class SemanticInstructionRetriever:
             return
 
         from google import genai
-        client = genai.Client(api_key=settings.google_api_key)
+        client = genai.Client(
+            api_key=settings.google_api_key,
+            http_options={"api_version": "v1"},
+        )
         self._chunks = _build_chunks(self.instructions_dir)
 
         for chunk in self._chunks:
@@ -285,7 +288,10 @@ class SemanticInstructionRetriever:
         settings = get_settings()
         try:
             from google import genai
-            client = genai.Client(api_key=settings.google_api_key)
+            client = genai.Client(
+                api_key=settings.google_api_key,
+                http_options={"api_version": "v1"},
+            )
             query_vec = await _embed(client, query, "RETRIEVAL_QUERY")
         except Exception as exc:
             logger.warning("RAG: query embedding failed (%s) — keyword fallback", exc)
