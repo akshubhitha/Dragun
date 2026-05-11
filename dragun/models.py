@@ -144,6 +144,42 @@ class Constraint(BaseModel):
     message_template: str
     is_active: bool = True
     created_at: datetime = Field(default_factory=utc_now)
+    last_triggered_at: datetime | None = None
+
+
+class GoalStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    PAUSED = "paused"
+
+
+class Goal(BaseModel):
+    goal_id: str = Field(default_factory=lambda: str(uuid4()))
+    user_id: str
+    name: str
+    target_amount: float
+    current_amount: float = 0.0
+    deadline: date | None = None
+    category: str | None = None
+    status: GoalStatus = GoalStatus.ACTIVE
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GoalCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    target_amount: float = Field(gt=0)
+    deadline: date | None = None
+    category: str | None = None
+
+
+class GoalUpdateRequest(BaseModel):
+    name: str | None = None
+    target_amount: float | None = None
+    current_amount: float | None = None
+    deadline: date | None = None
+    category: str | None = None
+    status: GoalStatus | None = None
 
 
 class ParsedItem(BaseModel):
@@ -193,6 +229,9 @@ class InventoryRow(BaseModel):
 class BudgetStatus(BaseModel):
     budget_id: str
     budget_scope: str
+    budget_amount: float
+    period_type: PeriodType
+    rollover_enabled: bool = False
     amount_spent: float
     amount_remaining: float
     daily_pace: float

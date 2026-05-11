@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import date
 from typing import Iterable
 
-from dragun.models import Budget, Constraint, Event, Tag, User, UserProfile
+from dragun.models import Budget, Constraint, Event, Goal, Tag, User, UserProfile
 
 
 class DragunRepository(ABC):
@@ -66,11 +66,56 @@ class DragunRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def update_budget(self, user_id: str, budget_id: str, **kwargs) -> Budget:
+        """Update allowed scalar fields on a budget (budget_amount, period_type, rollover_enabled)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_budget(self, user_id: str, budget_id: str) -> None:
+        """Soft-delete a budget by setting is_active = False."""
+        raise NotImplementedError
+
+    @abstractmethod
     def create_constraint(self, constraint: Constraint) -> Constraint:
         raise NotImplementedError
 
     @abstractmethod
     def list_active_constraints(self, user_id: str) -> list[Constraint]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_constraints(self, user_id: str) -> list[Constraint]:
+        """Return all active constraints for a user (alias used by the REST layer)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_constraint(self, user_id: str, constraint_id: str) -> None:
+        """Soft-delete a constraint by setting is_active = False."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_constraint(self, user_id: str, constraint_id: str, **kwargs) -> Constraint:
+        """Update arbitrary fields on a constraint (is_active, threshold_value, etc.)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_goal(self, goal: Goal) -> Goal:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_goals(self, user_id: str) -> list[Goal]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_goal(self, user_id: str, goal_id: str) -> Goal | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_goal(self, user_id: str, goal_id: str, **kwargs) -> Goal:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_goal(self, user_id: str, goal_id: str) -> None:
         raise NotImplementedError
 
     @abstractmethod

@@ -51,6 +51,9 @@ from dragun.models import (
     ConstraintCreateRequest,
     ConstraintOperator,
     ConstraintType,
+    Goal,
+    GoalCreateRequest,
+    GoalUpdateRequest,
     InputSource,
     LoginRequest,
     PeriodType,
@@ -62,6 +65,7 @@ from dragun.models import (
     UserProfileUpdateRequest,
     UserPublic,
     VerifyOTPRequest,
+    utc_now,
 )
 from dragun.services.actions import AdvisorResponseService, BackendActionRouter
 from dragun.services.agent import clear_history as _clear_agent_history
@@ -71,6 +75,7 @@ from dragun.services.intent import AgentIntent, IntentExtractionService, IntentI
 from dragun.services.rag import get_instruction_retriever
 from dragun.services.security import sanitize_input, sanitize_receipt_item
 from dragun.services.inventory import InventoryService
+from dragun.services.spending import get_spending_daily, get_spending_summary
 from dragun.services.parser import generate_dragon_reply, parse_text_input_async
 from dragun.storage.base import DragunRepository
 from dragun.storage.firestore import FirestoreRepository
@@ -534,6 +539,52 @@ def get_user(handle: str, repo: DragunRepository = Depends(get_repo)) -> UserPub
     return UserPublic.from_user(user)
 
 
+@app.patch("/api/users/{user_id}/budgets/{budget_id}")
+def patch_budget(
+    user_id: str,
+    budget_id: str,
+    body: dict,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    require_user_session(repo, user_id, request)
+    updates: dict = {}
+    if "budget_amount" in body and body["budget_amount"] is not None:
+        try:
+            v = float(body["budget_amount"])
+            if v <= 0:
+                raise HTTPException(status_code=400, detail="budget_amount must be greater than 0.")
+            updates["budget_amount"] = round(v, 2)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="budget_amount must be a number.")
+    if "period_type" in body and body["period_type"] is not None:
+        if body["period_type"] not in {p.value for p in PeriodType}:
+            raise HTTPException(status_code=400, detail=f"period_type must be one of: {[p.value for p in PeriodType]}")
+        updates["period_type"] = body["period_type"]
+    if "rollover_enabled" in body and isinstance(body["rollover_enabled"], bool):
+        updates["rollover_enabled"] = body["rollover_enabled"]
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+    try:
+        budget = repo.update_budget(user_id, budget_id, **updates)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    status = budget_service.get_budget_status(budget)
+    return {"budget": budget.model_dump(mode="json"), "status": status.model_dump(mode="json")}
+
+
+@app.delete("/api/users/{user_id}/budgets/{budget_id}")
+def delete_budget(
+    user_id: str,
+    budget_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    require_user_session(repo, user_id, request)
+    repo.delete_budget(user_id, budget_id)
+    return {"status": "deleted"}
+
+
 @app.post("/api/users/{user_id}/budgets")
 def create_budget(
     user_id: str,
@@ -547,6 +598,54 @@ def create_budget(
     return {"budget": budget, "status": status}
 
 
+@app.get("/api/users/{user_id}/constraints")
+def list_constraints(user_id: str, request: Request, repo: DragunRepository = Depends(get_repo)) -> dict:
+    require_user_session(repo, user_id, request)
+    constraints = repo.get_constraints(user_id)
+    return {"constraints": [c.model_dump(mode="json") for c in constraints]}
+
+
+@app.patch("/api/users/{user_id}/constraints/{constraint_id}")
+def patch_constraint(
+    user_id: str,
+    constraint_id: str,
+    body: dict,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    require_user_session(repo, user_id, request)
+    updates: dict = {}
+    if "is_active" in body and isinstance(body["is_active"], bool):
+        updates["is_active"] = body["is_active"]
+    if "threshold_value" in body and body["threshold_value"] is not None:
+        try:
+            v = float(body["threshold_value"])
+            if v <= 0:
+                raise HTTPException(status_code=400, detail="threshold_value must be greater than 0.")
+            updates["threshold_value"] = v
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="threshold_value must be a number.")
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+    try:
+        constraint = repo.update_constraint(user_id, constraint_id, **updates)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"constraint": constraint.model_dump(mode="json")}
+
+
+@app.delete("/api/users/{user_id}/constraints/{constraint_id}")
+def delete_constraint(
+    user_id: str,
+    constraint_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    require_user_session(repo, user_id, request)
+    repo.delete_constraint(user_id, constraint_id)
+    return {"status": "deleted"}
+
+
 @app.post("/api/users/{user_id}/constraints")
 def create_constraint(
     user_id: str,
@@ -557,6 +656,104 @@ def create_constraint(
     user = require_user_session(repo, user_id, request)
     constraint = budget_service.create_constraint(user.user_id, payload)
     return {"constraint": constraint}
+
+
+@app.post("/api/users/{user_id}/goals")
+def create_goal(
+    user_id: str,
+    payload: GoalCreateRequest,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    require_user_session(repo, user_id, request)
+    goal = Goal(
+        user_id=user_id,
+        name=payload.name,
+        target_amount=payload.target_amount,
+        deadline=payload.deadline,
+        category=payload.category,
+    )
+    saved = repo.create_goal(goal)
+    return {"goal": saved.model_dump(mode="json")}
+
+
+@app.get("/api/users/{user_id}/goals")
+def list_goals(user_id: str, request: Request, repo: DragunRepository = Depends(get_repo)) -> dict:
+    require_user_session(repo, user_id, request)
+    goals = repo.get_goals(user_id)
+    return {"goals": [g.model_dump(mode="json") for g in goals]}
+
+
+@app.patch("/api/users/{user_id}/goals/{goal_id}")
+def patch_goal(
+    user_id: str,
+    goal_id: str,
+    payload: GoalUpdateRequest,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    require_user_session(repo, user_id, request)
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+    updates["updated_at"] = utc_now()
+    try:
+        goal = repo.update_goal(user_id, goal_id, **updates)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"goal": goal.model_dump(mode="json")}
+
+
+@app.delete("/api/users/{user_id}/goals/{goal_id}")
+def delete_goal(
+    user_id: str,
+    goal_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+) -> dict:
+    require_user_session(repo, user_id, request)
+    repo.delete_goal(user_id, goal_id)
+    return {"status": "deleted"}
+
+
+@app.get("/api/users/{user_id}/spending/summary")
+def spending_summary(
+    user_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+    period: str = "month",
+) -> dict:
+    require_user_session(repo, user_id, request)
+    if period not in {"month", "week"}:
+        raise HTTPException(status_code=400, detail="period must be 'month' or 'week'.")
+    summary = get_spending_summary(repo, user_id, period)
+    return {
+        "total_spent": summary.total_spent,
+        "by_category": [
+            {"category": c.category, "amount": c.amount, "pct": c.pct}
+            for c in summary.by_category
+        ],
+        "period_start": summary.period_start,
+        "period_end": summary.period_end,
+    }
+
+
+@app.get("/api/users/{user_id}/spending/daily")
+def spending_daily(
+    user_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+    period: str = "month",
+) -> dict:
+    require_user_session(repo, user_id, request)
+    if period not in {"month", "week"}:
+        raise HTTPException(status_code=400, detail="period must be 'month' or 'week'.")
+    daily = get_spending_daily(repo, user_id, period)
+    return {
+        "days": [{"date": d.date, "amount": d.amount} for d in daily.days],
+        "period_start": daily.period_start,
+        "period_end": daily.period_end,
+    }
 
 
 @app.get("/api/users/{user_id}/inventory")

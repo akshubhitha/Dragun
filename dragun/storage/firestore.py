@@ -5,7 +5,7 @@ from typing import Any, Iterable
 
 from google.cloud import firestore
 
-from dragun.models import Budget, Constraint, Event, EventTag, Tag, User, UserProfile
+from dragun.models import Budget, Constraint, Event, EventTag, Goal, Tag, User, UserProfile
 from dragun.storage.base import DragunRepository
 
 
@@ -192,6 +192,23 @@ class FirestoreRepository(DragunRepository):
         )
         return sorted((Budget(**doc.to_dict()) for doc in docs), key=lambda budget: budget.created_at)
 
+    def update_budget(self, user_id: str, budget_id: str, **kwargs) -> Budget:
+        allowed = {"budget_amount", "period_type", "rollover_enabled"}
+        doc_ref = self.client.collection("budgets").document(budget_id)
+        doc = doc_ref.get()
+        if not doc.exists or doc.to_dict().get("user_id") != user_id:
+            raise ValueError("Budget not found.")
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if updates:
+            doc_ref.update(updates)
+        return Budget(**doc_ref.get().to_dict())
+
+    def delete_budget(self, user_id: str, budget_id: str) -> None:
+        doc_ref = self.client.collection("budgets").document(budget_id)
+        doc = doc_ref.get()
+        if doc.exists and doc.to_dict().get("user_id") == user_id:
+            doc_ref.update({"is_active": False})
+
     def create_constraint(self, constraint: Constraint) -> Constraint:
         self.client.collection("constraints").document(constraint.constraint_id).set(
             constraint.model_dump(mode="python")
@@ -209,6 +226,63 @@ class FirestoreRepository(DragunRepository):
             (Constraint(**doc.to_dict()) for doc in docs),
             key=lambda constraint: constraint.created_at,
         )
+
+    def get_constraints(self, user_id: str) -> list[Constraint]:
+        return self.list_active_constraints(user_id)
+
+    def delete_constraint(self, user_id: str, constraint_id: str) -> None:
+        doc_ref = self.client.collection("constraints").document(constraint_id)
+        doc = doc_ref.get()
+        if doc.exists and doc.to_dict().get("user_id") == user_id:
+            doc_ref.update({"is_active": False})
+
+    def update_constraint(self, user_id: str, constraint_id: str, **kwargs) -> Constraint:
+        allowed = {"is_active", "threshold_value"}
+        doc_ref = self.client.collection("constraints").document(constraint_id)
+        doc = doc_ref.get()
+        if not doc.exists or doc.to_dict().get("user_id") != user_id:
+            raise ValueError("Constraint not found.")
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if updates:
+            doc_ref.update(updates)
+        return Constraint(**doc_ref.get().to_dict())
+
+    def create_goal(self, goal: Goal) -> Goal:
+        self.client.collection("goals").document(goal.goal_id).set(
+            goal.model_dump(mode="python")
+        )
+        return goal
+
+    def get_goals(self, user_id: str) -> list[Goal]:
+        docs = (
+            self.client.collection("goals")
+            .where(filter=firestore.FieldFilter("user_id", "==", user_id))
+            .stream()
+        )
+        return sorted((Goal(**doc.to_dict()) for doc in docs), key=lambda g: g.created_at)
+
+    def get_goal(self, user_id: str, goal_id: str) -> Goal | None:
+        doc = self.client.collection("goals").document(goal_id).get()
+        if doc.exists and doc.to_dict().get("user_id") == user_id:
+            return Goal(**doc.to_dict())
+        return None
+
+    def update_goal(self, user_id: str, goal_id: str, **kwargs) -> Goal:
+        allowed = {"name", "target_amount", "current_amount", "deadline", "category", "status", "updated_at"}
+        doc_ref = self.client.collection("goals").document(goal_id)
+        doc = doc_ref.get()
+        if not doc.exists or doc.to_dict().get("user_id") != user_id:
+            raise ValueError("Goal not found.")
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if updates:
+            doc_ref.update(updates)
+        return Goal(**doc_ref.get().to_dict())
+
+    def delete_goal(self, user_id: str, goal_id: str) -> None:
+        doc_ref = self.client.collection("goals").document(goal_id)
+        doc = doc_ref.get()
+        if doc.exists and doc.to_dict().get("user_id") == user_id:
+            doc_ref.delete()
 
     def export_user_data(self, user_id: str) -> dict[str, Any]:
         user = self.get_user(user_id)

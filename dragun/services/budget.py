@@ -224,6 +224,9 @@ def status_from_spend(budget: Budget, amount_spent: float) -> BudgetStatus:
     return BudgetStatus(
         budget_id=budget.budget_id,
         budget_scope=budget.budget_scope,
+        budget_amount=budget.budget_amount,
+        period_type=budget.period_type,
+        rollover_enabled=budget.rollover_enabled,
         amount_spent=round(amount_spent, 2),
         amount_remaining=amount_remaining,
         daily_pace=daily_pace,

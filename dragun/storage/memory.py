@@ -11,6 +11,7 @@ from dragun.models import (
     Constraint,
     Event,
     EventTag,
+    Goal,
     Tag,
     User,
     UserProfile,
@@ -33,6 +34,7 @@ class InMemoryRepository(DragunRepository):
         self.budgets: dict[str, Budget] = {}
         self.constraints: dict[str, Constraint] = {}
         self.user_profiles: dict[str, UserProfile] = {}
+        self.goals: dict[str, Goal] = {}
 
     def create_user(self, user: User) -> User:
         normalized = user.handle.strip().lower()
@@ -141,6 +143,23 @@ class InMemoryRepository(DragunRepository):
             ]
             return deepcopy(sorted(budgets, key=lambda budget: budget.created_at))
 
+    def update_budget(self, user_id: str, budget_id: str, **kwargs) -> Budget:
+        allowed = {"budget_amount", "period_type", "rollover_enabled"}
+        with self._lock:
+            budget = self.budgets.get(budget_id)
+            if not budget or budget.user_id != user_id:
+                raise ValueError("Budget not found.")
+            for key, value in kwargs.items():
+                if key in allowed and value is not None:
+                    setattr(budget, key, value)
+            return deepcopy(budget)
+
+    def delete_budget(self, user_id: str, budget_id: str) -> None:
+        with self._lock:
+            budget = self.budgets.get(budget_id)
+            if budget and budget.user_id == user_id:
+                budget.is_active = False
+
     def create_constraint(self, constraint: Constraint) -> Constraint:
         with self._lock:
             self.constraints[constraint.constraint_id] = deepcopy(constraint)
@@ -154,6 +173,60 @@ class InMemoryRepository(DragunRepository):
                 if constraint.user_id == user_id and constraint.is_active
             ]
             return deepcopy(sorted(constraints, key=lambda constraint: constraint.created_at))
+
+    def get_constraints(self, user_id: str) -> list[Constraint]:
+        return self.list_active_constraints(user_id)
+
+    def delete_constraint(self, user_id: str, constraint_id: str) -> None:
+        with self._lock:
+            constraint = self.constraints.get(constraint_id)
+            if constraint and constraint.user_id == user_id:
+                constraint.is_active = False
+
+    def update_constraint(self, user_id: str, constraint_id: str, **kwargs) -> Constraint:
+        allowed = {"is_active", "threshold_value"}
+        with self._lock:
+            constraint = self.constraints.get(constraint_id)
+            if not constraint or constraint.user_id != user_id:
+                raise ValueError("Constraint not found.")
+            for key, value in kwargs.items():
+                if key in allowed and value is not None:
+                    setattr(constraint, key, value)
+            return deepcopy(constraint)
+
+    def create_goal(self, goal: Goal) -> Goal:
+        with self._lock:
+            self.goals[goal.goal_id] = deepcopy(goal)
+            return deepcopy(goal)
+
+    def get_goals(self, user_id: str) -> list[Goal]:
+        with self._lock:
+            goals = [g for g in self.goals.values() if g.user_id == user_id]
+            return deepcopy(sorted(goals, key=lambda g: g.created_at))
+
+    def get_goal(self, user_id: str, goal_id: str) -> Goal | None:
+        with self._lock:
+            goal = self.goals.get(goal_id)
+            if goal and goal.user_id == user_id:
+                return deepcopy(goal)
+            return None
+
+    def update_goal(self, user_id: str, goal_id: str, **kwargs) -> Goal:
+        allowed = {"name", "target_amount", "current_amount", "deadline", "category", "status", "updated_at"}
+        with self._lock:
+            goal = self.goals.get(goal_id)
+            if not goal or goal.user_id != user_id:
+                raise ValueError("Goal not found.")
+            for key, value in kwargs.items():
+                if key in allowed:
+                    setattr(goal, key, value)
+            return deepcopy(goal)
+
+    def delete_goal(self, user_id: str, goal_id: str) -> None:
+        with self._lock:
+            goal = self.goals.get(goal_id)
+            if goal and goal.user_id == user_id:
+                del self.goals[goal_id]
 
     def export_user_data(self, user_id: str) -> dict:
         with self._lock:
