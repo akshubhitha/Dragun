@@ -68,6 +68,7 @@ from dragun.services.agent import clear_history as _clear_agent_history
 from dragun.services.budget import BudgetService
 from dragun.services.history import append_turn, clear_history as _clear_conv_history
 from dragun.services.intent import AgentIntent, IntentExtractionService, IntentItem
+from dragun.services.rag import get_instruction_retriever
 from dragun.services.security import sanitize_input, sanitize_receipt_item
 from dragun.services.inventory import InventoryService
 from dragun.services.parser import generate_dragon_reply, parse_text_input_async
@@ -107,6 +108,12 @@ app = FastAPI(
     description="Phase 1 personal consumption intelligence agent built with Google Cloud ADK.",
     version="0.1.0",
 )
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    """Build the semantic RAG index at startup so all requests use embedding-based retrieval."""
+    await get_instruction_retriever().build_index()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,

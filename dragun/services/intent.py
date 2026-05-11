@@ -190,7 +190,7 @@ class IntentExtractionService:
     async def _extract_with_gemini(self, text: str, *, user_id: str | None = None) -> AgentIntent | None:
         from dragun.services.history import get_user_turns
         settings = get_settings()
-        context = get_instruction_retriever().context(text, limit=2)
+        context = await get_instruction_retriever().retrieve_as_context(text, intent=None, limit=2)
 
         # Inject recent user messages to resolve pronouns and follow-up references
         history_section = ""

@@ -11,6 +11,7 @@ dependencies = [
     "google-cloud-firestore>=2.19.0",
     "google-genai>=1.0.0",
     "httpx>=0.28.0",
+    "numpy>=1.26.0",
     "openinference-instrumentation-google-genai>=0.1.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",

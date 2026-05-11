@@ -376,7 +376,9 @@ class AdvisorResponseService:
         settings = get_settings()
         if not settings.google_api_key:
             return None
-        context = get_instruction_retriever().context(user_message, limit=2)
+        context = await get_instruction_retriever().retrieve_as_context(
+            user_message, intent=intent.intent, limit=2
+        )
 
         profile_section = ""
         if user_profile:
