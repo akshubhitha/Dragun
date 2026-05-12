@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     firestore_database: str = Field(default="(default)", validation_alias="FIRESTORE_DATABASE")
     firestore_emulator_host: str | None = Field(default=None, validation_alias="FIRESTORE_EMULATOR_HOST")
     adk_model: str = Field(default="gemini-2.5-flash", validation_alias="ADK_MODEL")
-    # Cheaper / faster model used for pure JSON extraction — no voice, just structure
-    gemini_extraction_model: str = Field(default="gemini-2.0-flash-lite", validation_alias="GEMINI_EXTRACTION_MODEL")
+    # Extraction model — must follow structured JSON instructions reliably
+    gemini_extraction_model: str = Field(default="gemini-2.5-flash", validation_alias="GEMINI_EXTRACTION_MODEL")
     google_api_key: str | None = Field(default=None, validation_alias="GOOGLE_API_KEY")
     arize_api_key: str | None = Field(default=None, validation_alias="ARIZE_API_KEY")
     session_secret: str | None = Field(default=None, validation_alias="DRAGUN_SESSION_SECRET")
