@@ -567,9 +567,27 @@
         <div class="section">
           <div class="section-head"><div class="section-title">🐉 Ask Dragun — Formula Bar</div></div>
           <div class="chat-messages" id="chat-messages" style="min-height:400px;max-height:calc(100vh - 260px);"></div>
-          <div class="chat-formula-bar">
+          <!-- Hidden file input for chat-bar receipt capture -->
+          <input type="file" id="chat-receipt-file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" style="display:none;"/>
+          <input type="file" id="chat-receipt-camera" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture="environment" style="display:none;"/>
+          <!-- Attach dropdown menu -->
+          <div id="chat-attach-menu" style="display:none;position:absolute;bottom:64px;right:16px;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:300;min-width:190px;padding:6px 0;">
+            <button class="attach-menu-item" id="cam-receipt-btn" style="display:block;width:100%;text-align:left;padding:10px 16px;background:none;border:none;font-family:inherit;font-size:13px;cursor:pointer;color:var(--text);">📷 Scan Receipt (Camera)</button>
+            <button class="attach-menu-item" id="lib-receipt-btn" style="display:block;width:100%;text-align:left;padding:10px 16px;background:none;border:none;font-family:inherit;font-size:13px;cursor:pointer;color:var(--text);">🖼 Upload Receipt</button>
+            <button class="attach-menu-item" id="barcode-entry-btn" style="display:block;width:100%;text-align:left;padding:10px 16px;background:none;border:none;font-family:inherit;font-size:13px;cursor:pointer;color:var(--text);">🔢 Enter Barcode</button>
+          </div>
+          <!-- Barcode inline row -->
+          <div id="chat-barcode-row" style="display:none;padding:6px 16px 6px;background:var(--panel);border-top:1px solid var(--border);gap:8px;align-items:center;">
+            <input id="chat-barcode-input" placeholder="Enter UPC / EAN barcode…" style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;width:100%;box-sizing:border-box;margin-bottom:6px;"/>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-sm" id="chat-barcode-submit">Look up</button>
+              <button style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;" id="chat-barcode-close">✕</button>
+            </div>
+          </div>
+          <div class="chat-formula-bar" style="position:relative;">
             <span class="formula-prefix">fx</span>
             <input class="chat-input" id="chat-input" placeholder='"3 shirts, 2 dresses — 50 bucks"  ·  "budget 200 for clothing"  ·  "how many shirts do I have?"'/>
+            <button class="chat-send" id="chat-attach-btn" title="Scan receipt or barcode" style="font-size:16px;">📎</button>
             <button class="chat-send" id="chat-voice-btn" title="Speak to Dragun">🎙</button>
             <button class="chat-send" id="chat-send">⏎ Send</button>
           </div>
@@ -998,6 +1016,91 @@ document.getElementById("receipt-upload-btn").addEventListener("click", async ()
     status.textContent = "✗ " + e.message;
     btn.disabled = false;
   }
+});
+
+/* ════ CHAT-BAR ATTACH (receipt + barcode) ════ */
+const chatAttachMenu = document.getElementById("chat-attach-menu");
+document.getElementById("chat-attach-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  chatAttachMenu.style.display = chatAttachMenu.style.display === "none" ? "block" : "none";
+});
+document.addEventListener("click", () => { chatAttachMenu.style.display = "none"; });
+
+document.getElementById("cam-receipt-btn").addEventListener("click", () => {
+  chatAttachMenu.style.display = "none";
+  document.getElementById("chat-receipt-camera").click();
+});
+document.getElementById("lib-receipt-btn").addEventListener("click", () => {
+  chatAttachMenu.style.display = "none";
+  document.getElementById("chat-receipt-file").click();
+});
+
+async function _submitChatReceipt(file) {
+  if (!file) return;
+  addMsg("user", "📎 " + file.name, "chat-messages");
+  addMsg("dragun", "Processing receipt…", "chat-messages");
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const r = await fetch(`/api/users/${state.userId}/receipt`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + state.sessionToken },
+      body: formData,
+    });
+    const b = await r.json();
+    if (!r.ok) throw new Error(b.detail || "Receipt processing failed.");
+    document.querySelector("#chat-messages .dragun-msg:last-child").remove();
+    addMsg("dragun", b.reply, "chat-messages");
+    await refreshAll();
+  } catch(e) {
+    document.querySelector("#chat-messages .dragun-msg:last-child")?.remove();
+    addMsg("dragun", "Couldn't read that receipt — try a clearer photo.", "chat-messages");
+  }
+}
+document.getElementById("chat-receipt-file").addEventListener("change", (e) => {
+  if (e.target.files[0]) _submitChatReceipt(e.target.files[0]);
+  e.target.value = "";
+});
+document.getElementById("chat-receipt-camera").addEventListener("change", (e) => {
+  if (e.target.files[0]) _submitChatReceipt(e.target.files[0]);
+  e.target.value = "";
+});
+
+const barcodeRow = document.getElementById("chat-barcode-row");
+document.getElementById("barcode-entry-btn").addEventListener("click", () => {
+  chatAttachMenu.style.display = "none";
+  barcodeRow.style.display = "flex";
+  barcodeRow.style.flexDirection = "column";
+  document.getElementById("chat-barcode-input").focus();
+});
+document.getElementById("chat-barcode-close").addEventListener("click", () => {
+  barcodeRow.style.display = "none";
+  document.getElementById("chat-barcode-input").value = "";
+});
+document.getElementById("chat-barcode-submit").addEventListener("click", async () => {
+  const barcode = document.getElementById("chat-barcode-input").value.trim();
+  if (!barcode) return;
+  barcodeRow.style.display = "none";
+  addMsg("user", "🔢 Barcode: " + barcode, "chat-messages");
+  addMsg("dragun", "Looking up product…", "chat-messages");
+  try {
+    const r = await fetch(`/api/users/${state.userId}/barcode`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + state.sessionToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ barcode }),
+    });
+    const b = await r.json();
+    document.querySelector("#chat-messages .dragun-msg:last-child")?.remove();
+    if (!r.ok) addMsg("dragun", b.detail || "Product not found — enter it manually.", "chat-messages");
+    else { addMsg("dragun", b.reply, "chat-messages"); await refreshAll(); }
+  } catch(e) {
+    document.querySelector("#chat-messages .dragun-msg:last-child")?.remove();
+    addMsg("dragun", "Barcode lookup failed — try again.", "chat-messages");
+  }
+  document.getElementById("chat-barcode-input").value = "";
+});
+document.getElementById("chat-barcode-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("chat-barcode-submit").click();
 });
 
 /* ════ NAV ════ */

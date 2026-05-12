@@ -96,6 +96,8 @@ class BackendActionRouter:
             return await self._update_profile(user, intent)
         if intent.intent == "off_topic":
             return self._off_topic(intent)
+        if intent.intent == "clear_inventory":
+            return await self._clear_inventory(user, intent)
         if intent.intent == "clarify" or intent.needs_clarification:
             return ActionResult(
                 reply=intent.clarifying_question or "What exactly should I guard or log?",
@@ -351,6 +353,51 @@ class BackendActionRouter:
             reply = "The dragon's eyes are on your hoard, not the world beyond it. Tell me what you've spent, what you own, or what you're thinking of buying."
         return ActionResult(reply=reply, intent=intent)
 
+    async def _clear_inventory(self, user: User, intent: AgentIntent) -> ActionResult:
+        """Wipe all inventory — requires confirmation from the previous turn."""
+        _CONFIRM_PROMPT = "Your entire hoard will be wiped — this can't be undone. Reply **yes, clear everything** to confirm."
+        _CONFIRM_MARKERS = {"yes, clear everything", "yes clear everything", "confirm", "yes do it", "yes wipe", "yes delete everything"}
+
+        # Check if the previous Dragun turn was our confirmation prompt
+        confirmed = any(marker in self._history_text.lower() for marker in ["wipe — this can't be undone", "yes, clear everything to confirm"]) \
+                    and any(marker in intent.raw_input.lower() for marker in _CONFIRM_MARKERS)
+
+        if not confirmed:
+            inventory = self.inventory_service.query_inventory(user.user_id)
+            return ActionResult(
+                reply=_CONFIRM_PROMPT,
+                intent=intent,
+                inventory=inventory,
+                budgets=self.budget_service.get_budget_statuses(user.user_id),
+            )
+
+        # Confirmed — delete all inventory items
+        inventory = self.inventory_service.query_inventory(user.user_id)
+        for row in inventory:
+            event = Event(
+                event_id=str(uuid4()),
+                user_id=user.user_id,
+                event_type=EventType.DISCARD,
+                item_description=row.item_normalized,
+                item_normalized=row.item_normalized,
+                quantity=row.quantity,
+                unit_cost=row.avg_unit_cost,
+                total_cost=None,
+                lifespan_type=row.lifespan_type,
+                input_source=InputSource.TEXT,
+                raw_input=intent.raw_input,
+                event_timestamp=datetime.now(UTC),
+                created_at=datetime.now(UTC),
+            )
+            self.inventory_service.repository.create_event(event, row.tags)
+
+        return ActionResult(
+            reply="The hoard is empty. Fresh start — what enters the lair?",
+            intent=intent,
+            inventory=[],
+            budgets=self.budget_service.get_budget_statuses(user.user_id),
+        )
+
     async def _clarify(self, user: User, intent: AgentIntent, question: str) -> ActionResult:
         return ActionResult(
             reply=question,
@@ -409,6 +456,7 @@ Rules:
 - If facts.action is casual, answer warmly in character.
 - Adapt your tone and advice to the user profile if one is provided.
 - If recent conversation is present, maintain continuity — don't repeat what was just said.
+- Never open by echoing the user's greeting back (e.g. if they say "hey", do not start with "Hey"). Vary your sentence starters naturally.
 
 Relevant voice guidance:
 {context or "No extra context."}
@@ -425,7 +473,7 @@ Backend facts JSON:
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
                 contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.55, max_output_tokens=220),
+                config=types.GenerateContentConfig(temperature=0.55, max_output_tokens=350),
             )
             raw_reply = (response.text or "").strip()
             if not raw_reply:

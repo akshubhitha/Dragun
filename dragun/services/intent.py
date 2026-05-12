@@ -29,6 +29,7 @@ IntentName = Literal[
     "update_profile",
     "casual",
     "off_topic",
+    "clear_inventory",
     "clarify",
     "unknown",
 ]
@@ -213,6 +214,7 @@ Rules:
 - Do not perform database work, arithmetic on inventory/budgets, or persistence.
 - "casual" means ONLY brief greetings or pleasantries (hi, hey, thanks, how are you). Nothing else.
 - "off_topic" means anything unrelated to personal spending, purchases, inventory, or budgets — including entertainment questions, general knowledge, and ANY question about investments, stocks, crypto, portfolio, trading, or financial markets.
+- "clear_inventory" means the user wants to delete or wipe ALL items from their hoard at once (e.g. "delete everything", "clear my hoard", "wipe all my items", "start fresh").
 - If the user asks whether they should/can buy something (a specific item for personal use), intent is "purchase_advice".
 - If required fields are missing, set intent "clarify" and provide one clarifying_question.
 - Normalize obvious item names and choose compact lowercase tags.
@@ -223,7 +225,7 @@ Relevant operating context:
 
 Schema shape:
 {{
-  "intent": "log_purchase|set_inventory_baseline|remove_items|query_inventory|create_budget|query_budget|create_constraint|update_item_cost|retag_item|purchase_advice|update_profile|casual|off_topic|clarify|unknown",
+  "intent": "log_purchase|set_inventory_baseline|remove_items|query_inventory|create_budget|query_budget|create_constraint|update_item_cost|retag_item|purchase_advice|update_profile|casual|off_topic|clear_inventory|clarify|unknown",
   "confidence": 0.0,
   "items": [
     {{
