@@ -69,6 +69,7 @@ class User(BaseModel):
     currency: str = "USD"
     monthly_income: float = 0.0
     fixed_costs_floor: float = 0.0
+    utility_costs_avg: float = 0.0
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("handle")
@@ -260,6 +261,7 @@ class UserPublic(BaseModel):
     currency: str
     monthly_income: float = 0.0
     fixed_costs_floor: float = 0.0
+    utility_costs_avg: float = 0.0
     created_at: datetime
 
     @classmethod
@@ -271,6 +273,7 @@ class UserPublic(BaseModel):
             currency=user.currency,
             monthly_income=user.monthly_income,
             fixed_costs_floor=user.fixed_costs_floor,
+            utility_costs_avg=user.utility_costs_avg,
             created_at=user.created_at,
         )
 

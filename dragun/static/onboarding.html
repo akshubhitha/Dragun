@@ -250,6 +250,17 @@
     .screen { display: none; flex-direction: column; height: 100%; animation: fadeUp .2s ease; }
     .screen.active { display: flex; }
     @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+    /* Receipt upload button */
+    .receipt-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 16px; border-radius: 10px;
+      border: 1.5px dashed var(--border);
+      background: #fafbfc; color: var(--muted);
+      font: 500 13px/1 inherit; cursor: pointer;
+      transition: all .15s; align-self: flex-start; margin-top: 4px;
+    }
+    .receipt-btn:hover { border-color: var(--accent); color: var(--accent); background: #f0fdf9; }
   </style>
 </head>
 <body>
@@ -371,15 +382,18 @@
           What's the last thing you bought? Doesn't matter how small.
         </div>
       </div>
-      <div class="hint">Try one of these</div>
+      <div class="hint" id="log-hint">Try one of these</div>
       <div class="chips" id="example-chips">
-        <div class="chip gold" onclick="useExample(this)">coffee $4.50</div>
-        <div class="chip gold" onclick="useExample(this)">takeout $28</div>
-        <div class="chip gold" onclick="useExample(this)">new sneakers $90</div>
-        <div class="chip gold" onclick="useExample(this)">Spotify $11/mo</div>
+        <div class="chip gold" onclick="pickCategory(this,'coffee')">☕ coffee</div>
+        <div class="chip gold" onclick="pickCategory(this,'groceries')">🛒 groceries</div>
+        <div class="chip gold" onclick="pickCategory(this,'medications')">💊 medications</div>
+        <div class="chip gold" onclick="pickCategory(this,'clothes')">👕 clothes</div>
+        <div class="chip gold" onclick="pickCategory(this,'gas')">⛽ gas</div>
       </div>
+      <button class="receipt-btn" id="receipt-upload-btn" onclick="triggerReceiptUpload()">📷 Snap or upload a receipt</button>
+      <input type="file" id="receipt-file-input" accept="image/*" capture="environment" style="display:none" onchange="handleReceiptUpload(this)"/>
     </div>
-    <div class="action-area">
+    <div class="action-area" id="log-action-area">
       <div class="input-row">
         <input class="text-input" id="log-input" placeholder="What did you buy?" />
         <button class="send-btn" onclick="sendLog()">→</button>
@@ -487,6 +501,47 @@
     <div class="action-area">
       <button class="btn-primary" id="calc-done-btn" onclick="submitFixedCalc()">That's my fixed floor →</button>
       <button class="btn-secondary" onclick="go(4)">Skip</button>
+    </div>
+  </div>
+
+  <!-- ══ S3d: Utility average ════════════════════════════════ -->
+  <div class="screen" id="s3d">
+    <div class="top-bar">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="18" fill="#0f1923"/><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/><path d="M13 21 Q18 18 23 21" stroke="#00c9a7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity=".5"/></svg>
+        <div class="logo-text">dra<span>gun</span></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill" style="width:50%"></div></div>
+      <button class="skip-btn" onclick="go(4)">skip</button>
+    </div>
+    <div class="chat-area" id="utility-chat">
+      <div class="dragon-msg">
+        <div class="avatar"><svg width="14" height="14" viewBox="0 0 36 36" fill="none"><path d="M9 26 L18 8 L27 26" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="18" cy="28" r="2" fill="#00c9a7"/></svg></div>
+        <div class="bubble">
+          Now for the ones that move around — <strong>electricity, gas, water</strong>.<br><br>
+          What do you typically spend on utilities each month? A rough average is fine.
+        </div>
+      </div>
+      <div class="example-card">
+        <div class="example-card-label">💡 Common ranges</div>
+        <div class="example-line"><span>Electricity</span><span>$60–$150</span></div>
+        <div class="example-line"><span>Gas / heating</span><span>$40–$120</span></div>
+        <div class="example-line"><span>Water</span><span>$20–$60</span></div>
+        <div class="example-line total"><span>Typical combined</span><span>$120–$330</span></div>
+      </div>
+      <div class="chips" style="margin-top: 4px;">
+        <div class="chip" onclick="useUtilityPreset('100')">~$100</div>
+        <div class="chip" onclick="useUtilityPreset('150')">~$150</div>
+        <div class="chip" onclick="useUtilityPreset('200')">~$200</div>
+        <div class="chip" onclick="useUtilityPreset('300')">~$300</div>
+      </div>
+    </div>
+    <div class="action-area">
+      <div class="input-row">
+        <input class="text-input" id="utility-input" placeholder="e.g. 180" type="number" min="0" step="1"/>
+        <button class="send-btn" onclick="submitUtilities()">→</button>
+      </div>
+      <button class="btn-secondary" onclick="go(4)">Skip — I'm not sure</button>
     </div>
   </div>
 
@@ -600,6 +655,7 @@
         <div class="summary-row"><span class="slbl">Monthly take-home</span><span class="sval" id="sum-income">—</span></div>
         <hr class="summary-divider"/>
         <div class="summary-row"><span class="slbl">Fixed costs</span><span class="sval" id="sum-fixed">—</span></div>
+        <div class="summary-row"><span class="slbl">Utilities (avg)</span><span class="sval" id="sum-utility">—</span></div>
         <div class="summary-row"><span class="slbl">Variable budgets</span><span class="sval" id="sum-var">—</span></div>
         <hr class="summary-divider"/>
         <div class="summary-row"><span class="slbl">Unaccounted for</span><span class="sval accent" id="sum-remaining">—</span></div>
@@ -658,6 +714,7 @@ try { userData = JSON.parse(sessionStorage.getItem('dragun_user') || '{}'); } ca
 // ── State ───────────────────────────────────────────────────
 var selectedPains = [];
 var fixedFloor    = 0;
+var utilityAvg    = 0;
 var varBudgetsSet = [];
 var income        = 0;
 var varQueue      = [];
@@ -696,6 +753,7 @@ function go(n) {
   el.classList.add('active');
   el.scrollTop = 0;
   if (n === '0b') setTimeout(function() { var inp = document.getElementById('username-input'); if(inp) inp.focus(); }, 80);
+  if (n === 2) { logStep = 'main'; logCategory = ''; }
   if (n === 4) initVarBudgets();
   if (n === 7) buildSummary();
 }
@@ -711,6 +769,7 @@ async function openHoard() {
     var profileBody = {};
     if (income > 0) profileBody.monthly_income = income;
     if (fixedFloor > 0) profileBody.fixed_costs_floor = fixedFloor;
+    if (utilityAvg > 0) profileBody.utility_costs_avg = utilityAvg;
     if (Object.keys(profileBody).length > 0) {
       await fetch('/api/users/' + userId + '/profile', {
         method: 'PATCH',
@@ -823,16 +882,28 @@ function togglePain(el, key) {
     count.style.display = 'block';
     count.textContent = selectedPains.length + ' selected';
     action.style.display = 'flex';
-    // Update example chips to match first pain
+    // Update example chips to reflect first selected pain (category-only, no amounts)
     var firstKey = selectedPains[0];
-    if (varData[firstKey]) {
-      var chips = document.getElementById('example-chips');
+    var chips = document.getElementById('example-chips');
+    if (chips) {
+      var defaultCats = [
+        { label: '☕ coffee',      key: 'coffee' },
+        { label: '🛒 groceries',  key: 'groceries' },
+        { label: '💊 medications',key: 'medications' },
+        { label: '👕 clothes',    key: 'clothes' },
+        { label: '⛽ gas',        key: 'gas' }
+      ];
+      var primaryCat = painToCat[firstKey] || defaultCats[0];
+      var catsToShow = [primaryCat];
+      defaultCats.forEach(function(c) {
+        if (c.key !== primaryCat.key && catsToShow.length < 4) catsToShow.push(c);
+      });
       chips.innerHTML = '';
-      var examples = [varData[firstKey].presets[1] ? varData[firstKey].label.toLowerCase() + ' ' + varData[firstKey].presets[1] : 'coffee $4.50', 'takeout $28', 'coffee $4.50', 'Spotify $11/mo'];
-      examples.slice(0,4).forEach(function(ex) {
+      catsToShow.forEach(function(cat) {
         var c = document.createElement('div');
-        c.className = 'chip gold'; c.textContent = ex;
-        c.onclick = function() { useExample(c); };
+        c.className = 'chip gold';
+        c.textContent = cat.label;
+        (function(el, k) { el.onclick = function() { pickCategory(el, k); }; })(c, cat.key);
         chips.appendChild(c);
       });
     }
@@ -847,22 +918,141 @@ function selOne(el, group) {
 }
 
 // ── First log ────────────────────────────────────────────────
-function useExample(el) {
-  document.getElementById('log-input').value = el.textContent;
-  document.getElementById('log-input').focus();
+var logStep     = 'main'; // 'main' | 'amount' | 'done'
+var logCategory = '';
+
+// Pain key → category chip mapping (used when togglePain rebuilds chips)
+var painToCat = {
+  food:        { label: '🛒 groceries',    key: 'groceries' },
+  dining:      { label: '🍽 dining out',   key: 'dining out' },
+  coffee:      { label: '☕ coffee',        key: 'coffee' },
+  clothes:     { label: '👕 clothes',      key: 'clothes' },
+  pets:        { label: '🐾 pet supplies', key: 'pet supplies' },
+  home:        { label: '🏠 home goods',   key: 'home goods' },
+  fitness:     { label: '💪 gym',          key: 'gym' },
+  subs:        { label: '📱 subscription', key: 'subscription' },
+  tech:        { label: '💻 electronics',  key: 'electronics' },
+  'going-out': { label: '🍺 going out',    key: 'going out' },
+  skincare:    { label: '🧴 skincare',     key: 'skincare' },
+  saving:      { label: '💰 savings',      key: 'savings' }
+};
+
+function hideLogSuggestions() {
+  var chips = document.getElementById('example-chips');
+  var hint  = document.getElementById('log-hint');
+  var rbtn  = document.getElementById('receipt-upload-btn');
+  if (chips) chips.style.display = 'none';
+  if (hint)  hint.style.display  = 'none';
+  if (rbtn)  rbtn.style.display  = 'none';
 }
-function sendLog() {
-  var val = document.getElementById('log-input').value.trim();
-  if (!val) return;
+
+function pickCategory(chipEl, category) {
+  if (logStep !== 'main') return;
+  logStep = 'amount';
+  logCategory = category;
+  hideLogSuggestions();
   var chat = document.getElementById('log-chat');
-  document.getElementById('example-chips').style.display = 'none';
+  chat.appendChild(userMsg(chipEl.textContent.trim()));
+  chat.scrollTop = 9999;
+  appendTypingThen(chat, 700, function() {
+    chat.appendChild(dragonMsg('How much did you spend?'));
+    chat.scrollTop = 9999;
+    document.getElementById('log-action-area').innerHTML =
+      '<div class="input-row">' +
+        '<input class="text-input" id="amount-input" placeholder="e.g. 4.50" type="number" min="0" step="0.01"/>' +
+        '<button class="send-btn" onclick="confirmAmount()">→</button>' +
+      '</div>' +
+      '<button class="btn-secondary" onclick="go(3)">Skip for now</button>';
+    setTimeout(function() { var i = document.getElementById('amount-input'); if (i) i.focus(); }, 50);
+  });
+}
+
+function confirmAmount() {
+  var amtEl = document.getElementById('amount-input');
+  if (!amtEl) return;
+  var amt = parseFloat(amtEl.value);
+  if (!amt || amt <= 0) { if (amtEl) amtEl.focus(); return; }
+  var chat = document.getElementById('log-chat');
+  chat.appendChild(userMsg('$' + amt.toFixed(2)));
+  chat.scrollTop = 9999;
+  logStep = 'done';
+  finishLog(chat, logCategory + ' $' + amt.toFixed(2));
+}
+
+function sendLog() {
+  if (logStep !== 'main') return;
+  var inp = document.getElementById('log-input');
+  if (!inp) return;
+  var val = inp.value.trim();
+  if (!val) return;
+  logStep = 'done';
+  hideLogSuggestions();
+  inp.value = '';
+  var chat = document.getElementById('log-chat');
   chat.appendChild(userMsg(val));
   chat.scrollTop = 9999;
-  document.getElementById('log-input').value = '';
+  finishLog(chat, val);
+}
+
+function finishLog(chat, val) {
+  var userId = userData.user_id || '';
+  var token  = userData.session_token || '';
+  // Best-effort save — fire and forget, don't block the UX
+  if (userId && token) {
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ user_id: userId, message: val, input_source: 'text' })
+    }).catch(function() {});
+  }
   appendTypingThen(chat, 900, function() {
     chat.appendChild(dragonMsg('Logged. That\'s your first entry in the hoard.<br><br>Keep going like that and you\'ll have a real picture within a week.'));
     setTimeout(function() { go(3); }, 1400);
   });
+}
+
+function triggerReceiptUpload() {
+  document.getElementById('receipt-file-input').click();
+}
+
+async function handleReceiptUpload(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  logStep = 'done';
+  hideLogSuggestions();
+  var chat = document.getElementById('log-chat');
+  chat.appendChild(userMsg('📷 Receipt photo'));
+  chat.scrollTop = 9999;
+  var userId = userData.user_id || '';
+  if (!userId) {
+    appendTypingThen(chat, 800, function() {
+      chat.appendChild(dragonMsg('Got the receipt. Once you\'re logged in I\'ll read it and log the items.'));
+      setTimeout(function() { go(3); }, 1600);
+    });
+    return;
+  }
+  var t = typing(); chat.appendChild(t); chat.scrollTop = 9999;
+  try {
+    var fd = new FormData();
+    fd.append('file', file);
+    var resp = await fetch('/api/users/' + userId + '/receipt', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + (userData.session_token || '') },
+      body: fd
+    });
+    t.remove();
+    if (resp.ok) {
+      var data = await resp.json();
+      chat.appendChild(dragonMsg(data.reply || 'Receipt scanned and logged to your hoard.'));
+    } else {
+      chat.appendChild(dragonMsg('Couldn\'t read that receipt — try typing your purchase instead.'));
+    }
+  } catch(e) {
+    t.remove();
+    chat.appendChild(dragonMsg('Couldn\'t upload the receipt. Try typing your purchase instead.'));
+  }
+  chat.scrollTop = 9999;
+  setTimeout(function() { go(3); }, 2200);
 }
 
 // ── Fixed costs — know the number ───────────────────────────
@@ -871,10 +1061,9 @@ function showFixedCalc()  { go('3c'); }
 
 function submitFixedKnown() {
   var v = parseFloat(document.getElementById('fixed-known-input').value) || 0;
-  if (v <= 0) { go(4); return; }
+  if (v <= 0) { go('3d'); return; }
   fixedFloor = v;
-  var chat = document.getElementById('fixed-chat');
-  go(4);
+  go('3d');
 }
 
 // ── Fixed costs — calculator ─────────────────────────────────
@@ -888,7 +1077,25 @@ function updateCalcTotal() {
 }
 function submitFixedCalc() {
   updateCalcTotal();
-  go(4);
+  go('3d');
+}
+
+// ── Utility average ──────────────────────────────────────────
+function useUtilityPreset(val) {
+  var inp = document.getElementById('utility-input');
+  if (inp) { inp.value = val; inp.focus(); }
+}
+function submitUtilities() {
+  var v = parseFloat(document.getElementById('utility-input').value) || 0;
+  if (v <= 0) { go(4); return; }
+  utilityAvg = v;
+  var chat = document.getElementById('utility-chat');
+  chat.appendChild(userMsg('~$' + v.toLocaleString() + '/mo'));
+  chat.scrollTop = 9999;
+  appendTypingThen(chat, 700, function() {
+    chat.appendChild(dragonMsg('Got it. I\'ll factor that into your monthly picture.'));
+    setTimeout(function() { go(4); }, 1000);
+  });
 }
 
 // ── Variable budgets ─────────────────────────────────────────
@@ -1005,7 +1212,7 @@ function submitIncome() {
   chat.appendChild(userMsg('$' + v.toLocaleString() + '/mo'));
   appendTypingThen(chat, 700, function() {
     var varTotal = varBudgetsSet.reduce(function(s, x) { return s + x.amt; }, 0);
-    var accountedFor = fixedFloor + varTotal;
+    var accountedFor = fixedFloor + utilityAvg + varTotal;
     var left = v - accountedFor;
     var msg = left > 0
       ? 'You have about <span class="hi">$' + left.toLocaleString() + '/mo</span> unaccounted for. That\'s what we\'ll keep an eye on.'
@@ -1019,13 +1226,14 @@ function submitIncome() {
 function buildSummary() {
   var varTotal = varBudgetsSet.reduce(function(s, x) { return s + x.amt; }, 0);
   var card = document.getElementById('summary-card');
-  if (income > 0 || fixedFloor > 0 || varTotal > 0) {
+  if (income > 0 || fixedFloor > 0 || utilityAvg > 0 || varTotal > 0) {
     card.style.display = 'block';
-    document.getElementById('sum-income').textContent = income > 0 ? '$' + income.toLocaleString() + '/mo' : '—';
-    document.getElementById('sum-fixed').textContent  = fixedFloor > 0 ? '-$' + fixedFloor.toLocaleString() + '/mo' : '—';
-    document.getElementById('sum-var').textContent    = varTotal > 0 ? '-$' + varTotal.toLocaleString() + '/mo' : '—';
+    document.getElementById('sum-income').textContent  = income > 0 ? '$' + income.toLocaleString() + '/mo' : '—';
+    document.getElementById('sum-fixed').textContent   = fixedFloor > 0 ? '-$' + fixedFloor.toLocaleString() + '/mo' : '—';
+    document.getElementById('sum-utility').textContent = utilityAvg > 0 ? '-$' + utilityAvg.toLocaleString() + '/mo' : '—';
+    document.getElementById('sum-var').textContent     = varTotal > 0 ? '-$' + varTotal.toLocaleString() + '/mo' : '—';
     if (income > 0) {
-      var rem = income - fixedFloor - varTotal;
+      var rem = income - fixedFloor - utilityAvg - varTotal;
       var el = document.getElementById('sum-remaining');
       el.textContent = '$' + Math.abs(rem).toLocaleString() + '/mo ' + (rem < 0 ? '(over budget)' : 'untracked');
       el.className = 'sval ' + (rem < 0 ? 'red' : 'accent');
@@ -1041,7 +1249,9 @@ document.addEventListener('keydown', function(e) {
   var active = document.activeElement;
   if (active && active.id === 'username-input') { submitUsername(); return; }
   if (active && active.id === 'log-input') { sendLog(); return; }
+  if (active && active.id === 'amount-input') { confirmAmount(); return; }
   if (active && active.id === 'fixed-known-input') { submitFixedKnown(); return; }
+  if (active && active.id === 'utility-input') { submitUtilities(); return; }
   if (active && active.id === 'income-input') { submitIncome(); return; }
   var viInp = document.getElementById('vi' + varIdx);
   if (active && viInp && active === viInp) { submitVar(varIdx, varQueue[varIdx]); return; }

@@ -51,7 +51,7 @@ class FirestoreRepository(DragunRepository):
         return User(**doc.to_dict()) if doc.exists else None
 
     def update_user_profile(self, user_id: str, **fields) -> User:
-        allowed = {"monthly_income", "fixed_costs_floor", "currency", "zip_code"}
+        allowed = {"monthly_income", "fixed_costs_floor", "utility_costs_avg", "currency", "zip_code"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         if updates:
             self.client.collection("users").document(user_id).update(updates)

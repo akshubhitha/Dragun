@@ -47,6 +47,7 @@ from dragun.config import Settings, get_settings
 from dragun.models import (
     BudgetCreateRequest,
     ChatRequest,
+    EventType,
     ChatResponse,
     ConstraintCreateRequest,
     ConstraintOperator,
@@ -402,7 +403,7 @@ def update_profile(
 ) -> dict:
     """Save financial profile fields collected during onboarding."""
     require_user_session(repo, user_id, request)
-    allowed = {"monthly_income", "fixed_costs_floor"}
+    allowed = {"monthly_income", "fixed_costs_floor", "utility_costs_avg"}
     updates = {k: float(v) for k, v in body.items() if k in allowed and v is not None}
     try:
         user = repo.update_user_profile(user_id, **updates)
@@ -753,6 +754,34 @@ def spending_daily(
         "days": [{"date": d.date, "amount": d.amount} for d in daily.days],
         "period_start": daily.period_start,
         "period_end": daily.period_end,
+    }
+
+
+@app.get("/api/users/{user_id}/events/recent")
+def recent_events(
+    user_id: str,
+    request: Request,
+    repo: DragunRepository = Depends(get_repo),
+    limit: int = 25,
+) -> dict:
+    """Return the most recent purchase events for the activity feed."""
+    require_user_session(repo, user_id, request)
+    all_events = repo.list_events(user_id)
+    purchase_events = [
+        e for e in all_events if e.event_type == EventType.PURCHASE
+    ]
+    purchase_events.sort(key=lambda e: e.event_timestamp, reverse=True)
+    recent = purchase_events[: min(limit, 50)]
+    event_ids = [e.event_id for e in recent]
+    tags_by_event = repo.list_event_tags(event_ids)
+    return {
+        "events": [
+            {
+                **e.model_dump(mode="json"),
+                "tags": tags_by_event.get(e.event_id, []),
+            }
+            for e in recent
+        ]
     }
 
 
