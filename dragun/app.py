@@ -128,6 +128,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
 
 def get_repo() -> DragunRepository:
@@ -1141,7 +1142,7 @@ def inventory_question(user_id: str) -> ChatResponse:
 @app.get("/{full_path:path}")
 async def spa_fallback(full_path: str, request: Request) -> FileResponse:
     """Serve React app for all non-API, non-static routes (React Router support)."""
-    if full_path.startswith("api/") or full_path.startswith("static/"):
+    if full_path.startswith("api/") or full_path.startswith("static/") or full_path.startswith("assets/"):
         raise HTTPException(status_code=404)
     index = STATIC_DIR / "index.html"
     if index.exists():
