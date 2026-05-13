@@ -1138,6 +1138,17 @@ def inventory_question(user_id: str) -> ChatResponse:
     return ChatResponse(reply=f"In the hoard: {inventory_text}.", inventory=rows)
 
 
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str, request: Request) -> FileResponse:
+    """Serve React app for all non-API, non-static routes (React Router support)."""
+    if full_path.startswith("api/") or full_path.startswith("static/"):
+        raise HTTPException(status_code=404)
+    index = STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    raise HTTPException(status_code=404)
+
+
 def build_dragon_reply(inventory_rows, budget_impacts, constraint_alerts, velocity_notes, intent: str) -> str:
     owned = ", ".join(f"{row.current_quantity:g} {row.item_normalized}" for row in inventory_rows[:8])
     opener = "Baseline marked" if intent == "manual_inventory" else "Got it"
