@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../AuthContext.jsx'
 import FAB from './FAB.jsx'
 import ChipModal from './ChipModal.jsx'
@@ -6,6 +6,10 @@ import { useState, useCallback } from 'react'
 import { logout as apiLogout, deleteAccount, exportData } from '../api.js'
 
 export default function Layout() {
+  // useLocation is already imported above
+  const location  = useLocation()
+  const isChatPage      = location.pathname === '/chat'
+  const isInventoryPage = location.pathname === '/inventory'
   const { session, logout } = useAuth()
   const navigate = useNavigate()
   const [chipModal, setChipModal] = useState(null) // { category } or null
@@ -71,10 +75,6 @@ export default function Layout() {
           <NavLink className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`} to="/goals">
             <i className="ti ti-target" />Goals
           </NavLink>
-          <NavLink className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`} to="/guards">
-            <i className="ti ti-shield-check" />Guards
-          </NavLink>
-
           <div className="nav-section-label">More</div>
 
           <NavLink className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`} to="/inventory">
@@ -100,13 +100,13 @@ export default function Layout() {
 
       {/* ── Main ── */}
       <div className="main">
-        <div className="content">
+        <div className={`content${isChatPage ? ' content--chat' : ''}${isInventoryPage ? ' content--inventory' : ''}`}>
           <Outlet context={{ openChip }} />
         </div>
       </div>
 
       {/* ── Overlays ── */}
-      <FAB onClick={() => navigate('/chat')} />
+      {!isChatPage && <FAB onClick={() => navigate('/chat')} elevated={isInventoryPage} />}
       {chipModal && (
         <ChipModal
           category={chipModal.category}

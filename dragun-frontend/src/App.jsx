@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './AuthContext.jsx'
 import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
+import Onboarding from './pages/Onboarding.jsx'
 import Overview from './pages/Overview.jsx'
 import Spending from './pages/Spending.jsx'
 import Budgets from './pages/Budgets.jsx'
@@ -26,6 +27,7 @@ export default function App() {
         path="/login"
         element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
       />
+      <Route path="/onboarding" element={<Onboarding />} />
       <Route
         path="/"
         element={
