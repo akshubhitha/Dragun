@@ -484,11 +484,6 @@ def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
-@app.get("/onboarding")
-def onboarding() -> FileResponse:
-    return FileResponse(STATIC_DIR / "onboarding.html")
-
-
 @app.get("/health")
 def health() -> dict[str, str]:
     agent_name = root_agent.name if root_agent is not None else "dragun_coordinator"
